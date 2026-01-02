@@ -1,102 +1,381 @@
-const httpStatus = require('http-status');
-const { Challan } = require('../models');
-const ApiError = require('../utils/apiError');
-const axios = require('axios');
+const { Challan, ChallanCounter } = require('../../models/index');
 
 /**
- * Create a challan
- * @param {Object} challanBody
+ * Generate next challan number
+ * @param {Object} session - Mongoose session for transaction
+ * @returns {Promise<string>}
+ */
+exports.generateChallanNumber = async (session) => {
+  const sequence = await ChallanCounter.getNextSequence('challan', session);
+  return `INV-${String(sequence).padStart(3, '0')}`; // Format: INV-001
+};
+
+/**
+ * Create a Challan
+ * @param {Object} payload
  * @returns {Promise<Challan>}
  */
-const createChallan = async (challanBody) => {
-  const challan = await Challan.create(challanBody);
-  
-  // Call V1 API to update isChallan flag
-  try {
-    const v1ApiUrl = `${process.env.V1_BASE_URL}/v1/product/update-challan-flag/${challanBody.productId}`;
-    
-    await axios.put(v1ApiUrl, {
-      isChallan: true
-    });
-    
-    console.log(`V1 product ${challanBody.productId} marked as challan`);
-  } catch (error) {
-    console.error('Failed to update V1 product:', error.message);
-    // Continue even if V1 update fails
-  }
-  
-  return challan;
+exports.create = async (payload) => {
+  return Challan.create(payload);
 };
 
 /**
- * Query for challans
- * @param {Object} filter - Mongo filter
- * @param {Object} options - Query options
- * @returns {Promise<QueryResult>}
- */
-const queryChallans = async (filter, options) => {
-  const challans = await Challan.paginate(filter, options);
-  return challans;
-};
-
-/**
- * Get challan by id
- * @param {ObjectId} id
+ * Update a Challan
+ * @param {Object} filter - Mongoose filter
+ * @param {Object} update - Mongoose update object
  * @returns {Promise<Challan>}
  */
-const getChallanById = async (id) => {
-  return Challan.findById(id);
+exports.update = async (filter, update) => {
+  return await Challan.findOneAndUpdate(filter, update, {
+    new: true,
+  });
 };
 
 /**
- * Update challan by id
- * @param {ObjectId} challanId
- * @param {Object} updateBody
- * @returns {Promise<Challan>}
+ * Get a Challan
+ * @param {Object} filter - Mongoose filter
  */
-const updateChallanById = async (challanId, updateBody) => {
-  const challan = await getChallanById(challanId);
-  if (!challan) {
-    throw new ApiError(httpStatus.NOT_FOUND, 'Challan not found');
-  }
-  Object.assign(challan, updateBody);
-  await challan.save();
-  return challan;
+exports.get = async (filter) => {
+  return await Challan.findOne(filter);
 };
 
 /**
- * Delete challan by id
- * @param {ObjectId} challanId
- * @returns {Promise<Challan>}
+ * Get a Challan with products and related lookups
+ * @param {string} identifier - Challan ID or Challan Number
  */
-const deleteChallanById = async (challanId) => {
-  const challan = await getChallanById(challanId);
-  if (!challan) {
-    throw new ApiError(httpStatus.NOT_FOUND, 'Challan not found');
-  }
+exports.getChallanWithProducts = async (identifier) => {
+  console.log('🔍 getChallanWithProducts service called with identifier:', identifier);
   
-  // Call V1 API to reset isChallan flag
-  try {
-    const v1ApiUrl = `${process.env.V1_BASE_URL}/v1/product/update-challan-flag/${challan.productId}`;
-    
-    await axios.put(v1ApiUrl, {
-      isChallan: false
-    });
-    
-    console.log(`V1 product ${challan.productId} challan flag reset`);
-  } catch (error) {
-    console.error('Failed to reset V1 product flag:', error.message);
-    // Continue even if V1 update fails
-  }
+  const mongoose = require('mongoose');
+  const isObjectId = mongoose.Types.ObjectId.isValid(identifier);
+  const filter = isObjectId ? { _id: new mongoose.Types.ObjectId(identifier) } : { challanNumber: identifier };
   
-  await challan.remove();
-  return challan;
+  console.log('📋 Filter:', filter);
+
+  const pipeline = [
+    { $match: { ...filter, deletedAt: null } },
+
+    // Lookup customer - use correct collection name based on model
+    {
+      $lookup: {
+        from: 'customers', // Try customers first (most common)
+        localField: 'customerId',
+        foreignField: '_id',
+        as: 'customer',
+      },
+    },
+    { $unwind: { path: '$customer', preserveNullAndEmptyArrays: true } },
+
+    // If customer not found, try alternative collection name
+    {
+      $lookup: {
+        from: 'customer', // Try singular customer
+        localField: 'customerId',
+        foreignField: '_id',
+        as: 'customer_alt',
+      },
+    },
+    {
+      $addFields: {
+        customer: { $ifNull: ['$customer', '$customer_alt'] }
+      }
+    },
+    { $unwind: { path: '$customer', preserveNullAndEmptyArrays: true } },
+
+    // Lookup selections for reference
+    {
+      $lookup: {
+        from: 'selections',
+        localField: 'selectionIds',
+        foreignField: '_id',
+        as: 'selections',
+        pipeline: [
+          {
+            $project: {
+              _id: 1,
+              requirementType: 1,
+              status: 1,
+              createdAt: 1
+            }
+          }
+        ]
+      },
+    },
+
+    // Unwind only the products that were actually saved with this challan
+    { $unwind: { path: '$products', preserveNullAndEmptyArrays: true } },
+
+    // Lookup product variant - try different collection names
+    {
+      $lookup: {
+        from: 'product_variants',
+        localField: 'products.productVariantId',
+        foreignField: '_id',
+        as: 'products.productVariant',
+      },
+    },
+    { $unwind: { path: '$products.productVariant', preserveNullAndEmptyArrays: true } },
+
+    // If productVariant not found, try alternative
+    {
+      $lookup: {
+        from: 'product_variant', // Model reference name
+        localField: 'products.productVariantId',
+        foreignField: '_id',
+        as: 'products.productVariant_alt',
+      },
+    },
+    {
+      $addFields: {
+        'products.productVariant': { $ifNull: ['$products.productVariant', '$products.productVariant_alt'] }
+      }
+    },
+    { $unwind: { path: '$products.productVariant', preserveNullAndEmptyArrays: true } },
+
+    // Lookup series product - try different collection names
+    {
+      $lookup: {
+        from: 'series_products',
+        localField: 'products.productVariant.series_product',
+        foreignField: '_id',
+        as: 'products.seriesProduct',
+      },
+    },
+    { $unwind: { path: '$products.seriesProduct', preserveNullAndEmptyArrays: true } },
+
+    // If seriesProduct not found, try alternative
+    {
+      $lookup: {
+        from: 'series_product', // Model reference name
+        localField: 'products.productVariant.series_product',
+        foreignField: '_id',
+        as: 'products.seriesProduct_alt',
+      },
+    },
+    {
+      $addFields: {
+        'products.seriesProduct': { $ifNull: ['$products.seriesProduct', '$products.seriesProduct_alt'] }
+      }
+    },
+    { $unwind: { path: '$products.seriesProduct', preserveNullAndEmptyArrays: true } },
+
+    // Lookup series - try different collection names
+    {
+      $lookup: {
+        from: 'series',
+        localField: 'products.seriesProduct.series',
+        foreignField: '_id',
+        as: 'products.series',
+      },
+    },
+    { $unwind: { path: '$products.series', preserveNullAndEmptyArrays: true } },
+
+    // Lookup selection for this specific product
+    {
+      $lookup: {
+        from: 'selections',
+        localField: 'products.selectionId',
+        foreignField: '_id',
+        as: 'products.selection',
+        pipeline: [
+          {
+            $project: {
+              _id: 1,
+              requirementType: 1,
+              status: 1
+            }
+          }
+        ]
+      },
+    },
+    { $unwind: { path: '$products.selection', preserveNullAndEmptyArrays: true } },
+
+    {
+      $addFields: {
+        'products.seriesProduct.name': { $ifNull: ['$products.seriesProduct.product_name', ''] },
+        'products.series.name': { $ifNull: ['$products.series.series_name', ''] },
+        'products.productName': { $ifNull: ['$products.seriesProduct.product_name', ''] },
+        'products.seriesName': { $ifNull: ['$products.series.series_name', ''] },
+        'products.designCode': { $ifNull: ['$products.seriesProduct.designCode', ''] },
+        'products.dimension': { $ifNull: ['$products.series.dimension', ''] },
+        'products.selectionName': { $ifNull: ['$products.selection.requirementType', 'N/A'] },
+        'products.selectionId': { $ifNull: ['$products.selection._id', null] },
+        'products.selectionStatus': { $ifNull: ['$products.selection.status', null] },
+        'products.selectionCreatedAt': { $ifNull: ['$products.selection.createdAt', null] }
+      }
+    },
+
+    // Group back products and format for frontend
+    {
+      $group: {
+        _id: '$_id',
+        challanNumber: { $first: '$challanNumber' },
+        customerId: { $first: '$customerId' },
+        customer: { $first: '$customer' },
+        selections: { $first: '$selections' },
+        selectionIds: { $first: '$selectionIds' },
+        products: { 
+          $push: {
+            // Keep original fields
+            productVariantId: '$products.productVariantId',
+            selectionId: '$products.selectionId',
+            quantity: '$products.quantity',
+            unitPerPrice: '$products.unitPerPrice',
+            totalAmount: '$products.totalAmount',
+            
+            // Frontend-friendly fields
+            productName: { $ifNull: ['$products.seriesProduct.product_name', '$products.productName', ''] },
+            seriesName: { $ifNull: ['$products.series.series_name', '$products.seriesName', ''] },
+            dimension: { $ifNull: ['$products.series.dimension', '$products.dimension', ''] },
+            designCode: { $ifNull: ['$products.seriesProduct.designCode', '$products.designCode', ''] },
+            selectionName: { $ifNull: ['$products.selection.requirementType', 'N/A'] },
+            selectionStatus: { $ifNull: ['$products.selection.status', null] },
+            
+            // Keep variant and series references for editing
+            productVariant: '$products.productVariant',
+            seriesProduct: '$products.seriesProduct',
+            series: '$products.series',
+            selection: '$products.selection',
+          }
+        },
+        totalAmount: { $first: '$totalAmount' },
+        totalQuantity: { $first: '$totalQuantity' },
+        status: { $first: '$status' },
+        remarks: { $first: '$remarks' },
+        createdBy: { $first: '$createdBy' },
+        createdAt: { $first: '$createdAt' },
+        updatedAt: { $first: '$updatedAt' },
+        purchaseOrderId: { $first: '$purchaseOrderId' },
+        deliveryNote: { $first: '$deliveryNote' },
+      },
+    },
+  ];
+
+  const results = await Challan.aggregate(pipeline);
+  console.log('📊 Aggregation results count:', results?.length || 0);
+  
+  if (!results || results.length === 0) {
+    console.log('❌ No challan found with identifier:', identifier);
+    return { success: false, message: 'Challan not found' };
+  }
+
+  const result = results[0];
+  
+  // Detailed debugging
+  console.log('🔍 Detailed Data Analysis:');
+  console.log('📋 Basic Info:', {
+    _id: result._id,
+    challanNumber: result.challanNumber,
+    status: result.status,
+    totalAmount: result.totalAmount,
+    totalQuantity: result.totalQuantity,
+    createdAt: result.createdAt
+  });
+  
+  console.log('👤 Customer Analysis:', {
+    customerId: result.customerId,
+    hasCustomer: !!result.customer,
+    customerData: result.customer ? {
+      _id: result.customer._id,
+      first_name: result.customer.first_name,
+      last_name: result.customer.last_name,
+      email: result.customer.email,
+      phone: result.customer.phone
+    } : null
+  });
+  
+  console.log('📦 Products Analysis:', {
+    productsCount: result.products?.length || 0,
+    products: result.products?.map((p, i) => ({
+      index: i,
+      productVariantId: p.productVariantId,
+      quantity: p.quantity,
+      unitPerPrice: p.unitPerPrice,
+      totalAmount: p.totalAmount,
+      hasVariant: !!p.productVariant,
+      hasSeriesProduct: !!p.seriesProduct,
+      hasSeries: !!p.series,
+      productName: p.productName,
+      seriesName: p.seriesName
+    }))
+  });
+  
+  console.log('🎯 Selections Analysis:', {
+    selectionIds: result.selectionIds,
+    selectionsCount: result.selections?.length || 0,
+    selections: result.selections?.map(s => ({
+      _id: s._id,
+      requirementType: s.requirementType,
+      status: s.status
+    }))
+  });
+
+  console.log('✅ Final Result Structure:', Object.keys(result));
+
+  return {
+    success: true,
+    data: result
+  };
 };
 
-module.exports = {
-  createChallan,
-  queryChallans,
-  getChallanById,
-  updateChallanById,
-  deleteChallanById,
+/**
+ * Get All Challans
+ * @param {Object} filter - Mongoose filter
+ * @param {Object} options - Mongoose query options
+ */
+exports.getAll = async (filter, options = {}) => {
+  return await Challan.paginate(filter, options);
+};
+
+/**
+ * Delete a Challan (soft delete)
+ * @param {Object} filter - Mongoose filter
+ * @param {Object} update - Mongoose update object
+ * @returns {Promise<Challan>}
+ */
+exports.delete = async (filter, update) => {
+  return await Challan.findOneAndUpdate(filter, update, { new: true });
+};
+
+/**
+ * Hard Delete a Challan
+ * @param {Object} filter - Mongoose filter
+ * @returns {Promise<Challan>}
+ */
+exports.hardDelete = async (filter) => {
+  return await Challan.findOneAndDelete(filter);
+};
+
+/**
+ * Aggregate Challan
+ * @param {Array} pipeline - Mongoose aggregation pipeline
+ */
+exports.aggregate = async (pipeline) => {
+  return await Challan.aggregate(pipeline);
+};
+
+/**
+ * Count Challans
+ * @param {Object} filter - Mongoose filter
+ */
+exports.count = async (filter) => {
+  return await Challan.countDocuments(filter);
+};
+
+/**
+ * Update Many Challans
+ * @param {Object} filter - Mongoose filter
+ * @param {Object} update - Mongoose update object
+ */
+exports.bulkUpdate = async (filter, update) => {
+  return await Challan.updateMany(filter, update);
+};
+
+/**
+ * Create bulk Challans
+ * @param {Array} payloads - Array of objects to be created
+ * @returns {Promise<Array<Challan>>}
+ */
+exports.insertMany = async (payloads) => {
+  return await Challan.insertMany(payloads);
 };

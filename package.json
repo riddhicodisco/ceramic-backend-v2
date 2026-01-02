@@ -2,17 +2,17 @@
     "name": "ceramic-backend-v2",
     "version": "2.0.0",
     "description": "ceramic backend v2",
-    "main": "src/app.js",
+    "main": "index.js",
     "scripts": {
-        "dev": "nodemon src/app.js",
+        "dev": "nodemon src/index.js",
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
         "prettier": "prettier --check **/*.js",
         "prettier:fix": "prettier --write **/*.js",
         "seed": "node src/seeder/index.js",
         "prepare": "husky install",
-        "init": "yarn install && pm2 start src/index.js --name '7005-ceramic-api'",
-        "serve": "yarn install && pm2 reload '7005-ceramic-api'"
+        "init": "yarn install && pm2 start src/index.js --name '7006-ceramic-api'",
+        "serve": "yarn install && pm2 reload '7006-ceramic-api'"
     },
     "author": "Micra",
     "license": "ISC",

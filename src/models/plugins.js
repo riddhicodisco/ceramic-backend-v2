@@ -9,7 +9,8 @@ const toJSON = (schema) => {
     options = schema.options.toJSON;
   }
 
-  schema.options.toJSON = Object.assign(options, {
+  const toJSONOptions = options || {};
+  schema.options.toJSON = Object.assign(toJSONOptions, {
     transform(doc, ret, options) {
       delete ret._id;
       delete ret.__v;
