@@ -1,13 +1,29 @@
 const { Challan, ChallanCounter } = require('../../models/index');
+const { generateChallanWithTransaction } = require('../../helper/challan.helper');
 
 /**
- * Generate next challan number
+ * Generate next challan number with transaction
+ * @param {Object} session - Mongoose session for transaction
+ * @returns {Promise<string>}
+ */
+exports.generateChallanWithTransaction = async (session) => {
+  try {
+    const sequence = await ChallanCounter.getNextSequence('challan', session);
+    const challanNumber = `INV-${String(sequence).padStart(6, '0')}`;
+    return challanNumber;
+  } catch (error) {
+    console.error('❌ Error generating challan number with transaction:', error);
+    throw new Error(`Failed to generate challan number: ${error.message}`);
+  }
+};
+
+/**
+ * Generate next challan number (legacy function for backward compatibility)
  * @param {Object} session - Mongoose session for transaction
  * @returns {Promise<string>}
  */
 exports.generateChallanNumber = async (session) => {
-  const sequence = await ChallanCounter.getNextSequence('challan', session);
-  return `INV-${String(sequence).padStart(3, '0')}`; // Format: INV-001
+  return exports.generateChallanWithTransaction(session);
 };
 
 /**
@@ -44,14 +60,11 @@ exports.get = async (filter) => {
  * @param {string} identifier - Challan ID or Challan Number
  */
 exports.getChallanWithProducts = async (identifier) => {
-  console.log('🔍 getChallanWithProducts service called with identifier:', identifier);
   
   const mongoose = require('mongoose');
   const isObjectId = mongoose.Types.ObjectId.isValid(identifier);
   const filter = isObjectId ? { _id: new mongoose.Types.ObjectId(identifier) } : { challanNumber: identifier };
   
-  console.log('📋 Filter:', filter);
-
   const pipeline = [
     { $match: { ...filter, deletedAt: null } },
 
@@ -252,7 +265,6 @@ exports.getChallanWithProducts = async (identifier) => {
   ];
 
   const results = await Challan.aggregate(pipeline);
-  console.log('📊 Aggregation results count:', results?.length || 0);
   
   if (!results || results.length === 0) {
     console.log('❌ No challan found with identifier:', identifier);
@@ -260,57 +272,6 @@ exports.getChallanWithProducts = async (identifier) => {
   }
 
   const result = results[0];
-  
-  // Detailed debugging
-  console.log('🔍 Detailed Data Analysis:');
-  console.log('📋 Basic Info:', {
-    _id: result._id,
-    challanNumber: result.challanNumber,
-    status: result.status,
-    totalAmount: result.totalAmount,
-    totalQuantity: result.totalQuantity,
-    createdAt: result.createdAt
-  });
-  
-  console.log('👤 Customer Analysis:', {
-    customerId: result.customerId,
-    hasCustomer: !!result.customer,
-    customerData: result.customer ? {
-      _id: result.customer._id,
-      first_name: result.customer.first_name,
-      last_name: result.customer.last_name,
-      email: result.customer.email,
-      phone: result.customer.phone
-    } : null
-  });
-  
-  console.log('📦 Products Analysis:', {
-    productsCount: result.products?.length || 0,
-    products: result.products?.map((p, i) => ({
-      index: i,
-      productVariantId: p.productVariantId,
-      quantity: p.quantity,
-      unitPerPrice: p.unitPerPrice,
-      totalAmount: p.totalAmount,
-      hasVariant: !!p.productVariant,
-      hasSeriesProduct: !!p.seriesProduct,
-      hasSeries: !!p.series,
-      productName: p.productName,
-      seriesName: p.seriesName
-    }))
-  });
-  
-  console.log('🎯 Selections Analysis:', {
-    selectionIds: result.selectionIds,
-    selectionsCount: result.selections?.length || 0,
-    selections: result.selections?.map(s => ({
-      _id: s._id,
-      requirementType: s.requirementType,
-      status: s.status
-    }))
-  });
-
-  console.log('✅ Final Result Structure:', Object.keys(result));
 
   return {
     success: true,

@@ -1,8 +1,8 @@
 const mongoose = require('mongoose');
-const validator = require('validator');
-const bcrypt = require('bcryptjs');
 const { toJSON, paginate } = require('./plugins');
-const { SOCIAL_TYPES, FILES_FOLDER } = require('../helper/constant.helper');
+
+// V2 User model that uses V1 users collection
+// Both backends share the same database, so we reference the V1 collection directly
 
 const userSchema = mongoose.Schema(
     {
@@ -18,29 +18,17 @@ const userSchema = mongoose.Schema(
         },
         email: {
             type: String,
-            // unique: true,
             trim: true,
             lowercase: true,
-            // validate(value) {
-            //     if (!validator.isEmail(value)) {
-            //         throw new Error('Invalid email');
-            //     }
-            // },
         },
         password: {
             type: String,
             trim: true,
             minlength: 8,
-            validate(value) {
-                if (!value.match(/\d/) || !value.match(/[a-zA-Z]/)) {
-                    throw new Error('Password must contain at least one letter and one number');
-                }
-            },
-            // private: true, // used by the toJSON plugin
         },
         role: {
             type: mongoose.Types.ObjectId,
-            ref: 'Role',
+            ref: 'roles',  // Reference to V1 roles collection
         },
         address: {
             type: String,
@@ -81,7 +69,6 @@ const userSchema = mongoose.Schema(
         },
         social_type: {
             type: String,
-            enum: Object.values(SOCIAL_TYPES),
         },
         is_block: {
             type: Boolean,
@@ -95,11 +82,11 @@ const userSchema = mongoose.Schema(
             type: String,
             default: null,
         },
-        reference:{
-          type:String,
+        reference: {
+            type: String,
         },
-        encryptedPassword:{
-          type:String,
+        encryptedPassword: {
+            type: String,
         },
         leave_date: { type: Date, default: null },
         deleted_at: {
@@ -108,7 +95,7 @@ const userSchema = mongoose.Schema(
         },
         createdBy: {
             type: mongoose.Types.ObjectId,
-            ref: 'User',
+            ref: 'users',
             default: null,
         },
     },
@@ -122,53 +109,7 @@ const userSchema = mongoose.Schema(
 userSchema.plugin(toJSON);
 userSchema.plugin(paginate);
 
-/**
- * Check if email is taken
- * @param {string} email - The user's email
- * @param {ObjectId} [excludeUserId] - The id of the user to be excluded
- * @returns {Promise<boolean>}
- */
-userSchema.statics.isEmailTaken = async function (email, excludeUserId) {
-    const user = await this.findOne({ email, _id: { $ne: excludeUserId } });
-    return !!user;
-};
-
-/**
- * Check if password matches the user's password.
- * @param {string} password
- * @returns {Promise<boolean>}
- */
-userSchema.methods.isPasswordMatch = async function (password) {
-    const user = this;
-    return bcrypt.compare(password, user.password);
-};
-
-userSchema.pre('save', async function (next) {
-    const user = this;
-    if (user.isModified('password')) {
-        user.password = await bcrypt.hash(user.password, 8);
-    }
-    next();
-});
-
-userSchema.post('findOne', async (data, next) => {
-    if (data) {
-        if (data?.image) {
-            data.image = `${process.env.BASE_URL}/${FILES_FOLDER.userImages}/${String(data._id)}/${
-                data.image
-            }`;
-        } else {
-            // Set default image if image is null, undefined, or empty string
-            data.image = `${process.env.BASE_URL}/${FILES_FOLDER.default}/user_image.jpg`;
-        }
-    }
-
-    next();
-});
-
-/**
- * @typedef User
- */
-const User = mongoose.model('User', userSchema);
+// Use V1 users collection name
+const User = mongoose.model('users', userSchema);
 
 module.exports = User;

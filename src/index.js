@@ -5,7 +5,7 @@ const connectDB = require('./db/dbConnection')
 
 let server
 
-connectDB() // Db connected.
+connectDB() // Main Db connected.
 
 server = app.listen(config.port, () => {
     logger.info(`Listening to port ${config.port}`)

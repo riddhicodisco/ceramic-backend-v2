@@ -12,6 +12,10 @@ const challanProductSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'series_product',
     },
+    selectionProductId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'SelectionProduct', // Reference to V1 model (conceptual)
+    },
     selectionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Selection',
@@ -92,7 +96,7 @@ const challanSchema = new mongoose.Schema(
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      ref: 'users',  // Reference to V1 users collection
       required: true,
     },
     deletedAt: {
@@ -109,6 +113,6 @@ const challanSchema = new mongoose.Schema(
 challanSchema.plugin(toJSON);
 challanSchema.plugin(paginate);
 
-const Challan = mongoose.model('Challan', challanSchema);
+const Challan = mongoose.model('challan', challanSchema);
 
 module.exports = Challan; 

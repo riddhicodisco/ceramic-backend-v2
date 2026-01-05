@@ -11,7 +11,7 @@ const tokenSchema = mongoose.Schema(
         },
         user: {
             type: mongoose.SchemaTypes.ObjectId,
-            ref: 'User',
+            ref: 'users',  // Reference to V1 users collection
             required: true,
         },
         type: {
@@ -40,6 +40,6 @@ tokenSchema.plugin(toJSON);
 /**
  * @typedef Token
  */
-const Token = mongoose.model('Token', tokenSchema);
+const Token = mongoose.model('token', tokenSchema);
 
 module.exports = Token;

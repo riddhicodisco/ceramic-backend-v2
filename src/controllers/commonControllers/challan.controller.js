@@ -5,111 +5,114 @@ const commonServices = require('../../services/commonServices');
 const { challanService, customerService, selectionService, selectionProductService } = commonServices;
 const { paginationQuery } = require('../../helper/mongoose.helper');
 const mongoose = require('mongoose');
+const v1Service = require('../../services/v1Service');
 
 module.exports = {
-  /**
-   * Simple debug method
-   */
-  debugCreate: catchAsync(async (req, res) => {
-    console.log('🎯 debugCreate controller called!');
-    console.log('📥 Request body:', req.body);
-    res.status(200).json({
-      success: true,
-      message: 'Debug create works!',
-      body: req.body
-    });
-  }),
-
   /**
    * Create a new challan
    */
   createChallan: catchAsync(async (req, res) => {
-    console.log('🎯 createChallan controller called!');
-    console.log('📥 Request body:', req.body);
-    console.log('👤 User info:', req.user);
-    
     try {
       const { customerId, selectionIds, products, remarks, status } = req.body;
-      
-      console.log('📋 Parsed data:', { customerId, selectionIds, products: products?.length, remarks, status });
 
       // Validate customer exists
-      console.log('🔍 Validating customer...');
-      const customer = await customerService.get({ _id: customerId, deletedAt: null });
-      console.log('👤 Customer found:', !!customer);
+      const customer = await v1Service.getCustomer(customerId, req.headers.authorization); // Fetch from V1
       if (!customer) {
-        throw new ApiError(httpStatus.NOT_FOUND, 'Customer not found');
+        throw new ApiError(httpStatus.NOT_FOUND, 'Customer not found (in V1)');
       }
 
       // Validate selections exist and belong to customer
-      console.log('🔍 Validating selections...');
       for (const selectionId of selectionIds) {
-        const selection = await selectionService.get({
-          _id: new mongoose.Types.ObjectId(selectionId),
-          customerId: new mongoose.Types.ObjectId(customerId),
-          deletedAt: null
-        });
-        console.log(`📋 Selection ${selectionId} found:`, !!selection);
+        // const selection = await selectionService.get({
+        //   _id: new mongoose.Types.ObjectId(selectionId),
+        //   customerId: new mongoose.Types.ObjectId(customerId),
+        //   deletedAt: null
+        // });
+        const selection = await v1Service.getSelection(selectionId, req.headers.authorization);
+
         if (!selection) {
-          throw new ApiError(httpStatus.BAD_REQUEST, `Selection ${selectionId} not found or does not belong to this customer`);
+          throw new ApiError(httpStatus.BAD_REQUEST, `Selection ${selectionId} not found`);
+        }
+
+        // Validate selection belongs to the customer
+        if (selection.customerId.toString() !== customerId) {
+          throw new ApiError(httpStatus.BAD_REQUEST, `Selection ${selectionId} does not belong to this customer`);
         }
       }
 
       // Calculate totals
-      console.log('💰 Calculating totals...');
       let totalAmount = 0;
       let totalQuantity = 0;
 
-      products.forEach(product => {
+      // Add selectionId to each product in the products array
+      // Each product should already have its selectionId from the frontend
+      const productsWithSelectionId = products.map(product => {
+        // If product doesn't have selectionId, we need to determine it
+        if (!product.selectionId) {
+          // For now, assign to first selection (but this should be fixed in frontend)
+          product.selectionId = selectionIds[0];
+        }
+        
+        return {
+          ...product,
+          selectionId: product.selectionId
+        };
+      });
+
+      productsWithSelectionId.forEach(product => {
         totalAmount += product.totalAmount;
         totalQuantity += product.quantity;
       });
-      console.log('💰 Totals calculated:', { totalAmount, totalQuantity });
 
       // Start a session for transaction
-      console.log('🔄 Starting transaction...');
       const session = await mongoose.startSession();
       session.startTransaction();
 
       try {
-        // Generate challan number
-        console.log('🔢 Generating challan number...');
-        const challanNumber = await challanService.generateChallanNumber(session);
-        console.log('🔢 Challan number generated:', challanNumber);
+        // Generate challan number with transaction
+        const challanNumber = await challanService.generateChallanWithTransaction(session);
 
         // Create challan
-        console.log('📝 Creating challan...');
         const challan = await challanService.create({
           challanNumber,
           customerId,
           selectionIds,
-          products,
+          products: productsWithSelectionId, // Use products with selectionId
           totalAmount,
           totalQuantity,
           status: status || 'Pending',
           remarks,
           createdBy: req.user._id,
-        });
-        console.log('✅ Challan created:', challan._id);
+        }, { session });
 
         await session.commitTransaction();
-        console.log('✅ Transaction committed');
 
         res.status(httpStatus.CREATED).send({
           success: true,
           message: 'Challan created successfully',
           data: challan,
         });
+
+        // Update isChallan flag in selection_products table using multiple update API
+        try {
+            await v1Service.updateMultipleProductChallanFlags(
+                productsWithSelectionId,  // Products with selectionId
+                true,  // challanCreated: true
+                req.headers.authorization,
+                challan._id,  // challanId
+                challanNumber,  // challanNumber
+                challan.status  // challanStatus (actual status from challan)
+            );
+        } catch (v1Error) {
+            console.warn('Could not update product flags in v1:', v1Error.message);
+        }
       } catch (error) {
-        console.log('❌ Transaction error:', error.message);
         await session.abortTransaction();
         throw error;
       } finally {
         session.endSession();
-        console.log('🔚 Session ended');
       }
     } catch (error) {
-      console.log('❌ Controller error:', error.message);
       throw error;
     }
   }),
@@ -118,9 +121,6 @@ module.exports = {
    * Get all challans with pagination
    */
   getAllChallans: catchAsync(async (req, res) => {
-    console.log('🎯 getAllChallans controller called!');
-    console.log('📥 Query params:', req.query);
-    
     const { page = 1, limit = 10, search, status, customerId } = req.query;
 
     const filter = {
@@ -237,9 +237,6 @@ module.exports = {
    * Get single challan by ID
    */
   getChallan: catchAsync(async (req, res) => {
-    console.log('🎯 getChallan controller called!');
-    console.log('📥 Params:', req.params);
-    
     const { id } = req.params;
     const result = await challanService.getChallanWithProducts(id);
 
@@ -258,10 +255,6 @@ module.exports = {
    * Update challan
    */
   updateChallan: catchAsync(async (req, res) => {
-    console.log('🎯 updateChallan controller called!');
-    console.log('📥 Params:', req.params);
-    console.log('📥 Body:', req.body);
-    
     const { id } = req.params;
     const { customerId, selectionIds, products, remarks, status, purchaseOrderId, deliveryNote } = req.body;
 
@@ -272,6 +265,45 @@ module.exports = {
 
     // Calculate new totals if products are updated
     if (products) {
+      // Revert flags for old products
+      try {
+        if (challan.products && Array.isArray(challan.products)) {
+          // Group old products by selectionId for multiple update
+          const oldProductsBySelection = {};
+          challan.products.forEach(product => {
+            const selectionId = product.selectionId;
+            if (!oldProductsBySelection[selectionId]) {
+              oldProductsBySelection[selectionId] = {
+                selectionId: selectionId,
+                productVariantId: []
+              };
+            }
+            oldProductsBySelection[selectionId].productVariantId.push({
+              p_id: product.selectionProductId || product._id,
+              totalSquareFeet: product.totalSquareFeet || 0,
+              isChallan: false,
+              challanId: null,
+              challanCreated: false,
+              challanNumber: null,
+              challanStatus: null
+            });
+          });
+
+          const oldUpdates = Object.values(oldProductsBySelection);
+          
+          await v1Service.updateMultipleProductChallanFlags(
+            oldUpdates,  // Old products with selectionId
+            false,  // challanCreated: false
+            req.headers.authorization,
+            null,  // challanId (null for reverting)
+            null,  // challanNumber (null for reverting)
+            null   // challanStatus (null for reverting)
+          );
+        }
+      } catch (v1Error) {
+        // Handle revert errors silently
+      }
+
       let totalAmount = 0;
       let totalQuantity = 0;
 
@@ -283,10 +315,48 @@ module.exports = {
       challan.products = products;
       challan.totalAmount = totalAmount;
       challan.totalQuantity = totalQuantity;
+
+      // Set flags for new products using multiple update API
+      try {
+        await v1Service.updateMultipleProductChallanFlags(
+            products,  // Products with selectionId
+            true,  // challanCreated: true
+            req.headers.authorization,
+            id,  // challanId
+            challan.challanNumber,  // challanNumber
+            'Created'  // challanStatus
+        );
+      } catch (v1Error) {
+        // Handle update errors silently
+      }
     }
 
-    if (customerId) challan.customerId = customerId;
-    if (selectionIds) challan.selectionIds = selectionIds;
+    if (customerId) {
+      const customer = await v1Service.getCustomer(customerId, req.headers.authorization);
+      if (!customer) {
+        throw new ApiError(httpStatus.NOT_FOUND, 'Customer not found (in V1)');
+      }
+      challan.customerId = customerId;
+    }
+
+    if (selectionIds) {
+      // Validate selections exist and belong to customer (or new customer if updated)
+      const targetCustomerId = customerId || challan.customerId.toString();
+
+      for (const selectionId of selectionIds) {
+        const selection = await v1Service.getSelection(selectionId, req.headers.authorization);
+
+        if (!selection) {
+          throw new ApiError(httpStatus.BAD_REQUEST, `Selection ${selectionId} not found`);
+        }
+
+        if (selection.customerId.toString() !== targetCustomerId) {
+          throw new ApiError(httpStatus.BAD_REQUEST, `Selection ${selectionId} does not belong to this customer`);
+        }
+      }
+      challan.selectionIds = selectionIds;
+    }
+
     if (remarks !== undefined) challan.remarks = remarks;
     if (status) challan.status = status;
     if (purchaseOrderId) challan.purchaseOrderId = purchaseOrderId;
@@ -317,6 +387,22 @@ module.exports = {
       { deletedAt: new Date() }
     );
 
+    // Update product flag in v1 to false using multiple update API (non-critical)
+    try {
+      if (challan.products && Array.isArray(challan.products)) {
+        await v1Service.updateMultipleProductChallanFlags(
+            challan.products,  // Products with selectionId
+            false,  // challanCreated: false
+            req.headers.authorization,
+            null,  // challanId (null for deletion)
+            null,  // challanNumber (null for deletion)
+            null   // challanStatus (null for deletion)
+        );
+      }
+    } catch (v1Error) {
+      // Handle delete errors silently
+    }
+
     res.status(httpStatus.OK).send({
       success: true,
       message: 'Challan deleted successfully',
@@ -333,7 +419,7 @@ module.exports = {
     const { id } = req.params;
 
     const challan = await challanService.getChallanWithProducts(id);
-    
+
     if (!challan.success) {
       throw new ApiError(httpStatus.NOT_FOUND, challan.message);
     }
@@ -377,7 +463,7 @@ module.exports = {
         $lookup: {
           from: 'series_products',
           localField: 'productVariant.series_product',
-          foreignField: '_id',
+          foreignField: '_id',  
           as: 'seriesProduct',
         },
       },

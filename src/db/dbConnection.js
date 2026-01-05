@@ -9,7 +9,6 @@ module.exports = connectDB = async () => {
             useUnifiedTopology: true,
         }); // Database connected.
         console.log('✅ V2 Database Connected successfully...');
-        console.log(`🚀 V2 Server running on port ${config.port}`);
     } catch (error) {
         console.log('❌ V2 Database Connections Error :', error);
         process.exit(1);

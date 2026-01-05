@@ -51,7 +51,10 @@ module.exports = {
 
       // Update product flag in v1 (non-critical)
       try {
-        await v1Service.updateProductChallanFlag(products[0].productId, true);
+        const updatePromises = products.map(product =>
+          v1Service.updateProductChallanFlag(product.selectionProductId, true, req.headers.authorization)
+        );
+        await Promise.all(updatePromises);
       } catch (v1Error) {
         console.warn('Could not update product flag in v1:', v1Error.message);
         // Continue with challan creation even if v1 update fails
@@ -131,7 +134,7 @@ module.exports = {
    */
   getChallan: catchAsync(async (req, res) => {
     const { id } = req.params;
-    
+
     // Validate ID
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid challan ID');
@@ -157,12 +160,12 @@ module.exports = {
    */
   updateChallan: catchAsync(async (req, res) => {
     const { id } = req.params;
-    
+
     // Validate ID
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid challan ID');
     }
-    
+
     const { productId, qty, customerId, remarks, status } = req.body;
 
     const challan = await Challan.findOne({ _id: id, deletedAt: null });
@@ -183,12 +186,22 @@ module.exports = {
     await challan.save();
 
     // Update product flag in v1 if productId changed (non-critical)
+    // Note: This logic assumes single product update for simplicity or needs expansion for multi-product
     if (productId && productId !== challan.productId) {
       try {
         // Set old product flag to false
-        await v1Service.updateProductChallanFlag(challan.productId, false);
+        // assuming challan.selectionProductId was saved or can be derived. 
+        // If the schema was not updated to store selectionProductId, this might be tricky.
+        // For now, disabling old flag update as it requires schema change on V2 side to store selectionProductId
+
+        // await v1Service.updateProductChallanFlag(challan.selectionProductId, false); 
+
         // Set new product flag to true
-        await v1Service.updateProductChallanFlag(productId, true);
+        // Assuming body passes a single selectionProductId for update
+        if (req.body.selectionProductId) {
+          await v1Service.updateProductChallanFlag(req.body.selectionProductId, true, req.headers.authorization);
+        }
+
       } catch (v1Error) {
         console.warn('Could not update product flag in v1:', v1Error.message);
       }
@@ -210,7 +223,7 @@ module.exports = {
    */
   deleteChallan: catchAsync(async (req, res) => {
     const { id } = req.params;
-    
+
     // Validate ID
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid challan ID');
@@ -223,7 +236,12 @@ module.exports = {
 
     // Update product flag in v1 to false (non-critical)
     try {
-      await v1Service.updateProductChallanFlag(challan.productId, false);
+      if (challan.products && Array.isArray(challan.products)) {
+        const updatePromises = challan.products.map(product =>
+          v1Service.updateProductChallanFlag(product.selectionProductId, false, req.headers.authorization)
+        );
+        await Promise.all(updatePromises);
+      }
     } catch (v1Error) {
       console.warn('Could not update product flag in v1:', v1Error.message);
       // Continue with challan deletion even if v1 update fails

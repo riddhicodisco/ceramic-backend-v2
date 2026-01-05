@@ -1,54 +1,210 @@
-const axios = require('axios');
 const config = require('../config/config');
 
 class V1Service {
     constructor() {
-        this.baseURL = config.base_url || 'http://localhost:5001';
-        this.client = axios.create({
-            baseURL: this.baseURL,
-            timeout: 10000,
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
+        this.baseURL = config.v1BaseUrl || 'http://localhost:7005';
+        
+        if (!config.v1BaseUrl) {
+            console.warn('⚠️ V1_BASE_URL not set in environment, using default: http://localhost:7005');
+        }
     }
 
     /**
-     * Update product challan flag in v1
-     * @param {string} productId - Product ID in v1
-     * @param {boolean} isChallan - Challan flag value
-     * @returns {Promise} - Axios response
+     * Update challan flag in V1 selection products using multiple update API
+     * @param {Array} products - Array of products with selectionId and product details
+     * @param {boolean} isChallan - Whether challan is created
+     * @param {string} token - Authorization token
+     * @param {string} challanId - Challan ID
+     * @returns {Promise} - Fetch response
      */
-    async updateProductChallanFlag(productId, isChallan) {
+    async updateMultipleProductChallanFlags(products, isChallan, token, challanId = null, challanNumber = null, challanStatus = null) {
         try {
-            const response = await this.client.put(
-                `/v1/admin/series-product/update-challan-flag/${productId}`,
-                { isChallan }
-            );
-            return response.data;
+            const headers = {
+                'Content-Type': 'application/json',
+            };
+            
+            if (token) headers.Authorization = token;
+
+            // Group products by selectionId
+            const updatesBySelection = {};
+            
+            products.forEach(product => {
+                const selectionId = product.selectionId;
+                if (!selectionId) {
+                    console.warn('⚠️ Product missing selectionId, skipping:', product);
+                    return;
+                }
+                
+                if (!updatesBySelection[selectionId]) {
+                    updatesBySelection[selectionId] = {
+                        selectionId: selectionId,
+                        productVariantId: []
+                    };
+                }
+                
+                // Create product object with isChallan flag as per V1 API structure
+                const productObject = {
+                    p_id: product.selectionProductId || product._id, // Product ID
+                    totalSquareFeet: product.totalSquareFeet || 0,
+                    isChallan: isChallan || false,
+                    challanId: challanId,
+                    challanCreated: isChallan || false,
+                    challanNumber: challanNumber,
+                    challanStatus: challanStatus || (isChallan ? 'Pending' : null)
+                };
+                
+                updatesBySelection[selectionId].productVariantId.push(productObject);
+            });
+
+            const updates = Object.values(updatesBySelection);
+
+            const requestBody = { updates };
+
+            const response = await fetch(`${this.baseURL}/v1/mobile/staff/selection/update-multiple-challan-flags`, {
+                method: 'PUT',
+                headers: headers,
+                body: JSON.stringify(requestBody)
+            });
+            
+            const data = await response.json();
+            
+            
+            if (!response.ok) {
+                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            }
+            
+            return data;
         } catch (error) {
-            // If v1 service is not available, log the error but don't fail the operation
-            if (error.code === 'ECONNREFUSED' || error.response?.status === 404) {
-                console.warn(`V1 service unavailable - could not update challan flag for product ${productId}. This is non-critical.`);
+            // If v1 service is not available, log error but don't fail the operation
+            if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch')) {
                 return { success: false, message: 'V1 service unavailable' };
             }
-            console.error('Error updating product challan flag in v1:', error.message);
-            throw new Error(`Failed to update product in v1: ${error.response?.data?.message || error.message}`);
+            if (error.message.includes('401')) {
+                return { success: false, message: 'Authentication failed' };
+            }
+            if (error.message.includes('403')) {
+                return { success: false, message: 'Permission denied' };
+            }
+            if (error.message.includes('404')) {
+                return { success: false, message: 'Selection products not found' };
+            }
+            throw new Error(`Failed to update products in v1: ${error.message}`);
         }
     }
 
     /**
      * Get product details from v1
      * @param {string} productId - Product ID in v1
-     * @returns {Promise} - Axios response
+     * @returns {Promise} - Fetch response
      */
     async getProduct(productId) {
         try {
-            const response = await this.client.get(`/v1/admin/series-product/get/${productId}`);
-            return response.data;
+            const response = await fetch(`${this.baseURL}/v1/admin/series-product/get/${productId}`);
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            }
+            
+            return data;
         } catch (error) {
             console.error('Error getting product from v1:', error.message);
-            throw new Error(`Failed to get product from v1: ${error.response?.data?.message || error.message}`);
+            throw new Error(`Failed to get product from v1: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get customer details from v1
+     * @param {string} customerId - Customer ID in v1
+     * @param {string} [token] - Authorization token
+     * @returns {Promise} - Fetch response
+     */
+    async getCustomer(customerId, token) {
+        try {
+            const headers = {};
+            if (token) headers.Authorization = token;
+
+            const response = await fetch(`${this.baseURL}/v1/admin/staff/customer-details/${customerId}`, { headers });
+            const data = await response.json();
+            
+            if (!response.ok) {
+                if (response.status === 404) {
+                    return null;
+                }
+                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            }
+            
+            return data?.data;
+        } catch (error) {
+            console.error('Error getting customer from v1:', error.message);
+            if (error.message.includes('404')) {
+                return null;
+            }
+            throw new Error(`Failed to get customer from v1: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get selection details from v1
+     * @param {string} selectionId - Selection ID in v1
+     * @param {string} [token] - Authorization token
+     * @returns {Promise} - Fetch response
+     */
+    async getSelection(selectionId, token) {
+        try {
+            const headers = {};
+            if (token) headers.Authorization = token;
+
+            const response = await fetch(`${this.baseURL}/v1/admin/selection/get/${selectionId}`, { headers });
+            const data = await response.json();
+            
+            if (!response.ok) {
+                if (response.status === 404) {
+                    return null;
+                }
+                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            }
+            
+            return data?.data;
+        } catch (error) {
+            console.error('Error getting selection from v1:', error.message);
+            if (error.message.includes('404')) {
+                return null;
+            }
+            throw new Error(`Failed to get selection from v1: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get role details from v1
+     * @param {string} roleId - Role ID
+     * @param {string} [token] - Authorization token
+     * @returns {Promise} - Fetch response
+     */
+    async getRole(roleId, token) {
+        try {
+            const headers = {};
+            if (token) headers.Authorization = token;
+
+            const response = await fetch(`${this.baseURL}/v1/admin/role/get/${roleId}`, { headers });
+            const data = await response.json();
+            
+            if (!response.ok) {
+                if (response.status === 404) {
+                    return null;
+                }
+                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            }
+            
+            return data?.data;
+        } catch (error) {
+            console.error('Error getting role from v1:', error.message);
+            if (error.message.includes('404')) {
+                console.warn('V1 Role returned 404');
+                return null;
+            }
+            // Non-blocking error for role lookup if service is down, but likely critical for auth
+            return null;
         }
     }
 }

@@ -20,7 +20,7 @@ const seriesSchema = mongoose.Schema(
         },
         user: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
+            ref: 'users',  // Reference to V1 users collection
             required: true,
         },
         isActive: {
@@ -44,6 +44,6 @@ seriesSchema.plugin(toJSON);
 seriesSchema.plugin(paginate);
 
 
-const Series = mongoose.model('Series', seriesSchema);
+const Series = mongoose.model('series', seriesSchema);
 
 module.exports = Series;

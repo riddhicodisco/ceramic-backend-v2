@@ -14,5 +14,5 @@ const seriesProductSchema = mongoose.Schema(
 seriesProductSchema.plugin(toJSON);
 seriesProductSchema.plugin(paginate);
 
-const SeriesProduct = mongoose.model('SeriesProduct', seriesProductSchema);
+const SeriesProduct = mongoose.model('seriesProduct', seriesProductSchema);
 module.exports = SeriesProduct;

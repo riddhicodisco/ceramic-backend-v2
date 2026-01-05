@@ -26,7 +26,7 @@ const verifyToken = async (req, res, next) => {
     // Try to decode token
     const jwt = require('jsonwebtoken');
     const config = require('../config/config');
-    
+
     let decoded;
     try {
       decoded = jwt.verify(token, config.jwt.secret);
@@ -38,11 +38,11 @@ const verifyToken = async (req, res, next) => {
         error: tokenError.message
       });
     }
-    
+
     // Get user from database
     const { User } = require('../models');
     const user = await User.findOne({ _id: decoded.sub, deleted_at: null });
-    
+
     if (!user) {
       return res.status(httpStatus.UNAUTHORIZED).json({
         success: false,
@@ -50,7 +50,7 @@ const verifyToken = async (req, res, next) => {
         code: 'USER_NOT_FOUND'
       });
     }
-    
+
     // Attach user data to request
     req.user = user;
 
@@ -132,97 +132,125 @@ const requireRole = (role) => {
 };
 
 const verifyRoleCallback = (req, resolve, reject, requiredRights) => async (err, user, info) => {
-    if (err) {
-        console.error('Auth error:', err.message);
-        return reject(new ApiError(httpStatus.UNAUTHORIZED, err.message || MESSAGE.unauthorized || 'Unauthorized'));
-    }
-    
-    if (info) {
-        console.error('Auth info:', info);
-        return reject(new ApiError(httpStatus.UNAUTHORIZED, info.message || MESSAGE.unauthorized || 'Unauthorized'));
-    }
-    
-    if (!user) {
-        console.error('No user found in token');
-        return reject(new ApiError(httpStatus.UNAUTHORIZED, MESSAGE.unauthorized || 'Unauthorized'));
-    }
+  if (err) {
+    return reject(new ApiError(httpStatus.UNAUTHORIZED, err.message || MESSAGE.unauthorized || 'Unauthorized'));
+  }
 
-    // Handle role lookup - user.role might be ObjectId or role name string (from v1 tokens)
-    let role;
-    const mongoose = require('mongoose');
-    
-    // Check if user.role is an ObjectId or a string role name
-    if (mongoose.Types.ObjectId.isValid(user.role) && String(user.role).length === 24) {
-        // It's an ObjectId, find by _id
-        role = await Role.findOne({ _id: user.role });
-    } else {
-        // It's a role name string (like "Admin", "Accountant"), find by role field
-        role = await Role.findOne({ role: user.role, deleted_at: null });
-    }
+  if (info) {
+    return reject(new ApiError(httpStatus.UNAUTHORIZED, info.message || MESSAGE.unauthorized || 'Unauthorized'));
+  }
 
+  if (!user) {
+    return reject(new ApiError(httpStatus.UNAUTHORIZED, MESSAGE.unauthorized || 'Unauthorized'));
+  }
+
+  // Handle role lookup - user.role might be ObjectId or role name string (from v1 tokens)
+  let role;
+  const mongoose = require('mongoose');
+
+  const v1Service = require('../services/v1Service');
+
+  // Check if user.role is an ObjectId or a string role name
+  if (mongoose.Types.ObjectId.isValid(user.role) && String(user.role).length === 24) {
+    // It's an ObjectId, find by _id locally
+    role = await Role.findOne({ _id: user.role });
+
+    // If not found locally, try V1
     if (!role) {
-        console.error('Role not found for user:', user._id, 'role:', user.role);
-        return reject(new ApiError(httpStatus.NOT_FOUND, MESSAGE.role_not_found || 'Role not found')); // If role doesn't exist, throw an error.
+      try {
+        // Pass existing auth token if available in headers
+        const token = req.headers.authorization;
+
+        const v1Role = await v1Service.getRole(user.role, token);
+
+        if (v1Role) {
+          role = v1Role; // Use V1 role object
+        }
+      } catch (err) {
+        if (err.response) {
+          console.warn(`V1 Response Status: ${err.response.status}, Data:`, JSON.stringify(err.response.data));
+        }
+      }
     }
+  } else {
+    // It's a role name string (like "Admin", "Accountant"), find by role field
+    console.log(`ℹ️ User role '${user.role}' is a string, attempting local lookup by role name.`);
+    role = await Role.findOne({ role: user.role, deleted_at: null });
 
-    if (!requiredRights.includes(role.role)) {
-        console.error('Role mismatch. Required:', requiredRights, 'User role:', role.role);
-        return reject(new ApiError(httpStatus.FORBIDDEN, MESSAGE.forbidden || 'Forbidden')); // If user role doesn't include in role require rights, throw an error.
+    // Fallback: If not found in DB but we trust the token (User object created from token), use the string as role
+    if (!role && user.role) {
+      console.warn(`⚠️ Role '${user.role}' not found in V2 DB. Synthesizing role object from token claim.`);
+      // Ensure it's a valid role by checking constants if possible, or just trusting it
+      const isValidRole = Object.values(ROLES).includes(user.role);
+      if (isValidRole) {
+        role = { role: user.role, permissions: [] }; // Synthesized role object
+      }
     }
+  }
 
-    if (user?.isBlock) {
-        return reject(new ApiError(httpStatus.UNAUTHORIZED, MESSAGE.account_blocked || 'Account blocked')); // If user is block, throw an error.
-    }
+  if (!role) {
+    console.error('Role not found for user:', user._id, 'role:', user.role);
+    return reject(new ApiError(httpStatus.NOT_FOUND, MESSAGE.role_not_found || 'Role not found')); // If role doesn't exist, throw an error.
+  }
 
-    if (user?.is_active === false) {
-        return reject(new ApiError(httpStatus.UNAUTHORIZED, MESSAGE.account_not_active || 'Account not active'));
-    }
+  if (!requiredRights.includes(role.role)) {
+    console.error('Role mismatch. Required:', requiredRights, 'User role:', role.role);
+    return reject(new ApiError(httpStatus.FORBIDDEN, MESSAGE.forbidden || 'Forbidden')); // If user role doesn't include in role require rights, throw an error.
+  }
 
-    req.user = user;
+  if (user?.isBlock) {
+    return reject(new ApiError(httpStatus.UNAUTHORIZED, MESSAGE.account_blocked || 'Account blocked')); // If user is block, throw an error.
+  }
 
-    const seller = role.role;
-    let oldToken;
-    let newToken;
+  if (user?.is_active === false) {
+    return reject(new ApiError(httpStatus.UNAUTHORIZED, MESSAGE.account_not_active || 'Account not active'));
+  }
 
-    if (seller === ROLES.seller) {
-        oldToken = req.headers.authorization.split(' ')[1]; // Extract token from Authorization header
-        const tokenIsExist = await tokenService.getToken({ user: user._id });
-        newToken = tokenIsExist?.accessToken; // Get access token or token from the found token document.
+  req.user = user;
 
-        if (newToken != oldToken)
-            return reject(
-                new ApiError(httpStatus.UNAUTHORIZED, MESSAGE.your_account_is_login_another_device || 'Your account is logged in on another device')
-            ); // If user is block, throw an error.
-    }
-    resolve();
+  const seller = role.role;
+  let oldToken;
+  let newToken;
+
+  if (seller === ROLES.seller) {
+    oldToken = req.headers.authorization.split(' ')[1]; // Extract token from Authorization header
+    const tokenIsExist = await tokenService.getToken({ user: user._id });
+    newToken = tokenIsExist?.accessToken; // Get access token or token from the found token document.
+
+    if (newToken != oldToken)
+      return reject(
+        new ApiError(httpStatus.UNAUTHORIZED, MESSAGE.your_account_is_login_another_device || 'Your account is logged in on another device')
+      ); // If user is block, throw an error.
+  }
+  resolve();
 };
 
 const authorizeV3 =
-    (...requiredRights) =>
+  (...requiredRights) =>
     async (req, res, next) => {
-        return new Promise((resolve, reject) => {
-            passport.authenticate(
-                'jwt',
-                { session: false },
-                verifyRoleCallback(req, resolve, reject, requiredRights)
-            )(req, res, next);
-        })
-            .then(() => next())
-            .catch((err) => next(err));
+      return new Promise((resolve, reject) => {
+        passport.authenticate(
+          'jwt',
+          { session: false },
+          verifyRoleCallback(req, resolve, reject, requiredRights)
+        )(req, res, next);
+      })
+        .then(() => next())
+        .catch((err) => next(err));
     };
 
 const auth =
-    (...requiredRights) =>
+  (...requiredRights) =>
     async (req, res, next) => {
-        return new Promise((resolve, reject) => {
-            passport.authenticate(
-                'jwt',
-                { session: false },
-                verifyRoleCallback(req, resolve, reject, requiredRights)
-            )(req, res, next);
-        })
-            .then(() => next())
-            .catch((err) => next(err));
+      return new Promise((resolve, reject) => {
+        passport.authenticate(
+          'jwt',
+          { session: false },
+          verifyRoleCallback(req, resolve, reject, requiredRights)
+        )(req, res, next);
+      })
+        .then(() => next())
+        .catch((err) => next(err));
     };
 
 module.exports = {

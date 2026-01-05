@@ -1,6 +1,9 @@
 const mongoose = require('mongoose');
 const { toJSON, paginate } = require('./plugins');
 
+// V2 Role model that uses V1 roles collection
+// Both backends share the same database, so we reference the V1 collection directly
+
 const roleSchema = new mongoose.Schema(
     {
         role: {
@@ -28,5 +31,7 @@ const roleSchema = new mongoose.Schema(
 roleSchema.plugin(toJSON);
 roleSchema.plugin(paginate);
 
-const Role = new mongoose.model('Role', roleSchema);
+// Use V1 roles collection name
+const Role = mongoose.model('roles', roleSchema);
+
 module.exports = Role;

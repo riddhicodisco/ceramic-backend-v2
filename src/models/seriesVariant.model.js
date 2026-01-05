@@ -14,5 +14,5 @@ const seriesVariantSchema = mongoose.Schema(
 seriesVariantSchema.plugin(toJSON);
 seriesVariantSchema.plugin(paginate);
 
-const SeriesVariant = mongoose.model('SeriesVariant', seriesVariantSchema);
+const SeriesVariant = mongoose.model('seriesVariant', seriesVariantSchema);
 module.exports = SeriesVariant;

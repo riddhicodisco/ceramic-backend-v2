@@ -2,8 +2,10 @@ const Joi = require('joi');
 const { objectId } = require('./custom.validation');
 
 const challanProductSchema = Joi.object().keys({
+  _id: Joi.string().custom(objectId).optional(),
   productVariantId: Joi.string().custom(objectId).required(),
   seriesProductId: Joi.string().custom(objectId).optional(),
+  selectionProductId: Joi.string().custom(objectId).optional(), // Added for V1 tracking
   selectionId: Joi.string().custom(objectId).optional(),
   quantity: Joi.number().min(1).required(),
   unitPerPrice: Joi.number().min(0).required(),
@@ -12,7 +14,7 @@ const challanProductSchema = Joi.object().keys({
   boxPerPiece: Joi.number().min(0).optional(),
   totalBox: Joi.number().min(0).optional(),
   totalSquareFeet: Joi.number().min(0).optional(),
-});
+}).unknown(true);
 
 module.exports = {
   createChallan: {
@@ -22,7 +24,7 @@ module.exports = {
       products: Joi.array().items(challanProductSchema).min(1).required(),
       remarks: Joi.string().trim().optional().allow(''),
       status: Joi.string().valid('Pending', 'Running', 'Completed', 'Delivered').optional().default('Pending'),
-    }),
+    }).unknown(true),
   },
 
   updateChallan: {

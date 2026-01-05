@@ -14,5 +14,5 @@ const productVariantSchema = mongoose.Schema(
 productVariantSchema.plugin(toJSON);
 productVariantSchema.plugin(paginate);
 
-const ProductVariant = mongoose.model('ProductVariant', productVariantSchema);
+const ProductVariant = mongoose.model('productVariant', productVariantSchema);
 module.exports = ProductVariant;

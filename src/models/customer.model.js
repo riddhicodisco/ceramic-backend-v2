@@ -32,7 +32,7 @@ const customerSchema = new mongoose.Schema(
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      ref: 'users',  // Reference to V1 users collection
       required: true,
     },
   },
@@ -45,6 +45,6 @@ const customerSchema = new mongoose.Schema(
 customerSchema.plugin(toJSON);
 customerSchema.plugin(paginate);
 
-const Customer = mongoose.model('Customer', customerSchema);
+const Customer = mongoose.model('customer', customerSchema);
 
 module.exports = Customer;
