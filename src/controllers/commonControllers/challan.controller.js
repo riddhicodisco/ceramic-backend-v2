@@ -1,8 +1,7 @@
 const httpStatus = require('http-status');
 const ApiError = require('../../utils/apiError');
 const catchAsync = require('../../utils/catchAsync');
-const commonServices = require('../../services/commonServices');
-const { challanService, customerService, selectionService, selectionProductService } = commonServices;
+const { challanService, customerService } = require('../../services/commonServices');
 const { paginationQuery } = require('../../helper/mongoose.helper');
 const mongoose = require('mongoose');
 const v1Service = require('../../services/v1Service');
@@ -59,6 +58,21 @@ module.exports = {
         };
       });
 
+      // Validate that none of the products are already used in other challans
+      for (const product of productsWithSelectionId) {
+        const existingChallanProduct = await challanService.get({
+          'products.selectionProductId': product.selectionProductId || product._id,
+          deletedAt: null
+        });
+
+        if (existingChallanProduct) {
+          throw new ApiError(
+            httpStatus.BAD_REQUEST, 
+            `Product  is already used in challan ${existingChallanProduct.challanNumber}. Cannot create duplicate challan.`
+          );
+        }
+      }
+
       productsWithSelectionId.forEach(product => {
         totalAmount += product.totalAmount;
         totalQuantity += product.quantity;
@@ -95,16 +109,16 @@ module.exports = {
 
         // Update isChallan flag in selection_products table using multiple update API
         try {
-            await v1Service.updateMultipleProductChallanFlags(
-                productsWithSelectionId,  // Products with selectionId
-                true,  // challanCreated: true
-                req.headers.authorization,
-                challan._id,  // challanId
-                challanNumber,  // challanNumber
-                challan.status  // challanStatus (actual status from challan)
-            );
+          await v1Service.updateMultipleProductChallanFlags(
+            productsWithSelectionId,  // Products with selectionId
+            true,  // challanCreated: true
+            req.headers.authorization,
+            challan._id,  // challanId
+            challanNumber,  // challanNumber
+            challan.status  // challanStatus (actual status from challan)
+          );
         } catch (v1Error) {
-            console.warn('Could not update product flags in v1:', v1Error.message);
+          console.warn('Could not update product flags in v1:', v1Error.message);
         }
       } catch (error) {
         await session.abortTransaction();
@@ -238,7 +252,7 @@ module.exports = {
    */
   getChallan: catchAsync(async (req, res) => {
     const { id } = req.params;
-    const result = await challanService.getChallanWithProducts(id);
+    const result = await challanService.getChallanWithProducts(id, req.headers.authorization);
 
     if (!result.success) {
       throw new ApiError(httpStatus.NOT_FOUND, result.message);
@@ -290,7 +304,7 @@ module.exports = {
           });
 
           const oldUpdates = Object.values(oldProductsBySelection);
-          
+
           await v1Service.updateMultipleProductChallanFlags(
             oldUpdates,  // Old products with selectionId
             false,  // challanCreated: false
@@ -319,12 +333,12 @@ module.exports = {
       // Set flags for new products using multiple update API
       try {
         await v1Service.updateMultipleProductChallanFlags(
-            products,  // Products with selectionId
-            true,  // challanCreated: true
-            req.headers.authorization,
-            id,  // challanId
-            challan.challanNumber,  // challanNumber
-            'Created'  // challanStatus
+          products,  // Products with selectionId
+          true,  // challanCreated: true
+          req.headers.authorization,
+          id,  // challanId
+          challan.challanNumber,  // challanNumber
+          'Created'  // challanStatus
         );
       } catch (v1Error) {
         // Handle update errors silently
@@ -364,6 +378,22 @@ module.exports = {
 
     await challan.save();
 
+    // Update challan status in selection products if status changed
+    if (status && challan.products && Array.isArray(challan.products)) {
+      try {
+        await v1Service.updateMultipleProductChallanFlags(
+          challan.products,  // Products with selectionId
+          true,  // challanCreated: true (keep as true since challan exists)
+          req.headers.authorization,
+          challan._id,  // challanId
+          challan.challanNumber,  // challanNumber
+          status  // challanStatus (new status)
+        );
+      } catch (v1Error) {
+        console.warn('Could not update challan status in selection products:', v1Error.message);
+      }
+    }
+
     res.status(httpStatus.OK).send({
       success: true,
       message: 'Challan updated successfully',
@@ -391,12 +421,12 @@ module.exports = {
     try {
       if (challan.products && Array.isArray(challan.products)) {
         await v1Service.updateMultipleProductChallanFlags(
-            challan.products,  // Products with selectionId
-            false,  // challanCreated: false
-            req.headers.authorization,
-            null,  // challanId (null for deletion)
-            null,  // challanNumber (null for deletion)
-            null   // challanStatus (null for deletion)
+          challan.products,  // Products with selectionId
+          false,  // challanCreated: false
+          req.headers.authorization,
+          null,  // challanId (null for deletion)
+          null,  // challanNumber (null for deletion)
+          null   // challanStatus (null for deletion)
         );
       }
     } catch (v1Error) {
@@ -418,7 +448,7 @@ module.exports = {
   downloadChallan: catchAsync(async (req, res) => {
     const { id } = req.params;
 
-    const challan = await challanService.getChallanWithProducts(id);
+    const challan = await challanService.getChallanWithProducts(id, req.headers.authorization);
 
     if (!challan.success) {
       throw new ApiError(httpStatus.NOT_FOUND, challan.message);
@@ -463,7 +493,7 @@ module.exports = {
         $lookup: {
           from: 'series_products',
           localField: 'productVariant.series_product',
-          foreignField: '_id',  
+          foreignField: '_id',
           as: 'seriesProduct',
         },
       },

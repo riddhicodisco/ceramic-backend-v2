@@ -3,7 +3,7 @@ const config = require('../config/config');
 class V1Service {
     constructor() {
         this.baseURL = config.v1BaseUrl || 'http://localhost:7005';
-        
+
         if (!config.v1BaseUrl) {
             console.warn('⚠️ V1_BASE_URL not set in environment, using default: http://localhost:7005');
         }
@@ -22,26 +22,26 @@ class V1Service {
             const headers = {
                 'Content-Type': 'application/json',
             };
-            
+
             if (token) headers.Authorization = token;
 
             // Group products by selectionId
             const updatesBySelection = {};
-            
+
             products.forEach(product => {
                 const selectionId = product.selectionId;
                 if (!selectionId) {
                     console.warn('⚠️ Product missing selectionId, skipping:', product);
                     return;
                 }
-                
+
                 if (!updatesBySelection[selectionId]) {
                     updatesBySelection[selectionId] = {
                         selectionId: selectionId,
                         productVariantId: []
                     };
                 }
-                
+
                 // Create product object with isChallan flag as per V1 API structure
                 const productObject = {
                     p_id: product.selectionProductId || product._id, // Product ID
@@ -52,7 +52,7 @@ class V1Service {
                     challanNumber: challanNumber,
                     challanStatus: challanStatus || (isChallan ? 'Pending' : null)
                 };
-                
+
                 updatesBySelection[selectionId].productVariantId.push(productObject);
             });
 
@@ -65,14 +65,14 @@ class V1Service {
                 headers: headers,
                 body: JSON.stringify(requestBody)
             });
-            
+
             const data = await response.json();
-            
-            
+
+
             if (!response.ok) {
                 throw new Error(data.message || `HTTP error! status: ${response.status}`);
             }
-            
+
             return data;
         } catch (error) {
             // If v1 service is not available, log error but don't fail the operation
@@ -95,17 +95,21 @@ class V1Service {
     /**
      * Get product details from v1
      * @param {string} productId - Product ID in v1
+     * @param {string} [token] - Authorization token
      * @returns {Promise} - Fetch response
      */
-    async getProduct(productId) {
+    async getProduct(productId, token = null) {
         try {
-            const response = await fetch(`${this.baseURL}/v1/admin/series-product/get/${productId}`);
+            const headers = {};
+            if (token) headers.Authorization = token;
+
+            const response = await fetch(`${this.baseURL}/v1/admin/series-product/get/${productId}`, { headers });
             const data = await response.json();
-            
+
             if (!response.ok) {
                 throw new Error(data.message || `HTTP error! status: ${response.status}`);
             }
-            
+
             return data;
         } catch (error) {
             console.error('Error getting product from v1:', error.message);
@@ -126,14 +130,13 @@ class V1Service {
 
             const response = await fetch(`${this.baseURL}/v1/admin/staff/customer-details/${customerId}`, { headers });
             const data = await response.json();
-            
             if (!response.ok) {
                 if (response.status === 404) {
                     return null;
                 }
                 throw new Error(data.message || `HTTP error! status: ${response.status}`);
             }
-            
+
             return data?.data;
         } catch (error) {
             console.error('Error getting customer from v1:', error.message);
@@ -157,14 +160,14 @@ class V1Service {
 
             const response = await fetch(`${this.baseURL}/v1/admin/selection/get/${selectionId}`, { headers });
             const data = await response.json();
-            
+
             if (!response.ok) {
                 if (response.status === 404) {
                     return null;
                 }
                 throw new Error(data.message || `HTTP error! status: ${response.status}`);
             }
-            
+
             return data?.data;
         } catch (error) {
             console.error('Error getting selection from v1:', error.message);
@@ -188,23 +191,119 @@ class V1Service {
 
             const response = await fetch(`${this.baseURL}/v1/admin/role/get/${roleId}`, { headers });
             const data = await response.json();
-            
+
             if (!response.ok) {
                 if (response.status === 404) {
                     return null;
                 }
                 throw new Error(data.message || `HTTP error! status: ${response.status}`);
             }
-            
+
             return data?.data;
         } catch (error) {
-            console.error('Error getting role from v1:', error.message);
             if (error.message.includes('404')) {
                 console.warn('V1 Role returned 404');
                 return null;
             }
             // Non-blocking error for role lookup if service is down, but likely critical for auth
             return null;
+        }
+    }
+
+    /**
+     * Get selection product details from v1
+     * @param {string} selectionProductId - Selection Product ID
+     * @param {string} [token] - Authorization token
+     * @returns {Promise} - Fetch response
+     */
+    async getSelectionProduct(selectionProductId, token) {
+        try {
+            const headers = {};
+            if (token) {
+                headers.Authorization = token;
+            }
+
+            const url = `${this.baseURL}/v1/admin/selection-product/get/${selectionProductId}`;
+
+            const response = await fetch(url, { headers });
+            const data = await response.json();
+
+            if (!response.ok) {
+                if (response.status === 404) {
+                    return null;
+                }
+                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            }
+
+            return data?.data;
+        } catch (error) {
+            console.error('Error getting selection product from v1:', error.message);
+            if (error.message.includes('404')) {
+                return null;
+            }
+            throw new Error(`Failed to get selection product from v1: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get series product details from v1
+     * @param {string} seriesProductId - Series Product ID
+     * @param {string} [token] - Authorization token
+     * @returns {Promise} - Fetch response
+     */
+    async getSeriesProduct(seriesProductId, token) {
+        try {
+            const headers = {};
+            if (token) headers.Authorization = token;
+
+            const response = await fetch(`${this.baseURL}/v1/admin/series-product/get/${seriesProductId}`, { headers });
+            const data = await response.json();
+
+            if (!response.ok) {
+                if (response.status === 404) {
+                    return null;
+                }
+                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            }
+
+            return data?.data;
+        } catch (error) {
+            console.error('Error getting series product from v1:', error.message);
+            if (error.message.includes('404')) {
+                return null;
+            }
+            throw new Error(`Failed to get series product from v1: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get series details from v1
+     * @param {string} seriesId - Series ID
+     * @param {string} [token] - Authorization token
+     * @returns {Promise} - Fetch response
+     */
+    async getSeries(seriesId, token) {
+        try {
+            const headers = {};
+            if (token) headers.Authorization = token;
+
+            const response = await fetch(`${this.baseURL}/v1/admin/series/get/${seriesId}`, { headers });
+            const data = await response.json();
+
+            if (!response.ok) {
+                if (response.status === 404) {
+                    return null;
+                }
+                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            }
+
+            return data?.data;
+        } catch (error) {
+            console.error('Error getting series from v1:', error.message);
+            if (error.message.includes('404')) {
+                return null;
+            }
+            throw new Error(`Failed to get series from v1: ${error.message}`);
         }
     }
 }

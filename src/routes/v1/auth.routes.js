@@ -1,7 +1,5 @@
 const express = require('express');
 const { login, refreshToken, logout } = require('../../controllers/authController');
-const { testAuth } = require('../../controllers/testController');
-const { verifyToken } = require('../../middlewares/auth');
 
 const router = express.Router();
 
@@ -22,11 +20,5 @@ router.post('/refresh-token', refreshToken);
  * Logout user
  */
 router.post('/logout', logout);
-
-/**
- * GET /v1/auth/test
- * Test authentication
- */
-router.get('/test', verifyToken, testAuth);
 
 module.exports = router;

@@ -174,7 +174,6 @@ const verifyRoleCallback = (req, resolve, reject, requiredRights) => async (err,
     }
   } else {
     // It's a role name string (like "Admin", "Accountant"), find by role field
-    console.log(`ℹ️ User role '${user.role}' is a string, attempting local lookup by role name.`);
     role = await Role.findOne({ role: user.role, deleted_at: null });
 
     // Fallback: If not found in DB but we trust the token (User object created from token), use the string as role

@@ -105,11 +105,6 @@ module.exports = {
 
     const challans = await Challan.paginate(filter, options);
 
-    // Debug: Log the structure of first result
-    if (challans.results && challans.results.length > 0) {
-      console.log('Raw challan data structure:', JSON.stringify(challans.results[0], null, 2));
-    }
-
     // Populate results with proper error handling
     if (challans.results && challans.results.length > 0) {
       try {

@@ -3,6 +3,7 @@ const { toJSON, paginate } = require('./plugins');
 
 const challanProductSchema = new mongoose.Schema(
   {
+    // Product References
     productVariantId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Product_variant',
@@ -14,12 +15,15 @@ const challanProductSchema = new mongoose.Schema(
     },
     selectionProductId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'SelectionProduct', // Reference to V1 model (conceptual)
+      ref: 'SelectionProduct',
     },
     selectionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Selection',
+      required: true,
     },
+    
+    // Pricing & Quantity
     quantity: {
       type: Number,
       required: true,
@@ -35,7 +39,10 @@ const challanProductSchema = new mongoose.Schema(
     unit: {
       type: String,
       enum: ['Sq.Feet/Price', 'Piece/Price'],
+      default: 'Sq.Feet/Price',
     },
+    
+    // Box Information
     boxPerPiece: {
       type: Number,
     },
@@ -44,7 +51,61 @@ const challanProductSchema = new mongoose.Schema(
     },
     totalSquareFeet: {
       type: Number,
+      default: 0,
     },
+    
+    // Product Details (NEW - for easy display without lookups)
+    productName: {
+      type: String,
+      default: '',
+    },
+    variantName: {
+      type: String,
+      default: '',
+    },
+    seriesName: {
+      type: String,
+      default: '',
+    },
+    
+    // Additional Product IDs (NEW - for reference)
+    productId: {
+      type: String, // Can be String or ObjectId from V1
+    },
+    variantId: {
+      type: String,
+    },
+    seriesId: {
+      type: String,
+    },
+    
+    // Metadata (NEW)
+    isProductDeleted: {
+      type: Boolean,
+      default: false,
+    },
+    
+    // Selection Context (NEW - for display purposes)
+    selectionInfo: {
+      selectionId: {
+        type: mongoose.Schema.Types.ObjectId,
+      },
+      requirementType: {
+        type: String,
+        default: '',
+      },
+      customerName: {
+        type: String,
+        default: '',
+      },
+      selectionStatus: {
+        type: String,
+        default: '',
+      },
+    },
+  },
+  {
+    _id: false, // Don't create separate _id for sub-documents
   }
 );
 
@@ -66,7 +127,10 @@ const challanSchema = new mongoose.Schema(
         ref: 'Selection',
       },
     ],
-    products: [challanProductSchema],
+    products: [challanProductSchema], // Now accepts all the fields we're sending
+    selectionDetails: {
+      type: mongoose.Schema.Types.Mixed,
+    },
     totalAmount: {
       type: Number,
       required: true,
@@ -85,6 +149,7 @@ const challanSchema = new mongoose.Schema(
     remarks: {
       type: String,
       trim: true,
+      default: '',
     },
     purchaseOrderId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -96,7 +161,7 @@ const challanSchema = new mongoose.Schema(
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'users',  // Reference to V1 users collection
+      ref: 'users',
       required: true,
     },
     deletedAt: {
@@ -115,4 +180,4 @@ challanSchema.plugin(paginate);
 
 const Challan = mongoose.model('challan', challanSchema);
 
-module.exports = Challan; 
+module.exports = Challan;
