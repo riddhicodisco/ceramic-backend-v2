@@ -42,6 +42,8 @@ module.exports = {
       // Calculate totals
       let totalAmount = 0;
       let totalQuantity = 0;
+      let totalSquareFeet = 0;
+      let totalBox = 0;
 
       // Add selectionId to each product in the products array
       // Each product should already have its selectionId from the frontend
@@ -74,8 +76,10 @@ module.exports = {
       }
 
       productsWithSelectionId.forEach(product => {
-        totalAmount += product.totalAmount;
-        totalQuantity += product.quantity;
+        totalAmount += product.totalAmount || 0;
+        totalQuantity += product.quantity || 0;
+        totalSquareFeet += product.totalSquareFeet || 0;
+        totalBox += product.totalBox || 0;
       });
 
       // Start a session for transaction
@@ -94,6 +98,8 @@ module.exports = {
           products: productsWithSelectionId, // Use products with selectionId
           totalAmount,
           totalQuantity,
+          totalSquareFeet, // Add totalSquareFeet
+          totalBox, // Add totalBox
           status: status || 'Pending',
           remarks,
           createdBy: req.user._id,
@@ -323,12 +329,21 @@ module.exports = {
 
       products.forEach(product => {
         totalAmount += product.totalAmount;
-        totalQuantity += product.quantity;
+        // Use quantity if available, otherwise use totalBox or totalSquareFeet
+        if (product.quantity && !isNaN(product.quantity)) {
+          totalQuantity += product.quantity;
+        } else if (product.totalBox && !isNaN(product.totalBox)) {
+          totalQuantity += product.totalBox;
+        } else if (product.totalSquareFeet && !isNaN(product.totalSquareFeet)) {
+          totalQuantity += product.totalSquareFeet;
+        }
       });
 
       challan.products = products;
       challan.totalAmount = totalAmount;
       challan.totalQuantity = totalQuantity;
+      challan.totalSquareFeet = totalSquareFeet; // Add totalSquareFeet
+      challan.totalBox = totalBox; // Add totalBox
 
       // Set flags for new products using multiple update API
       try {

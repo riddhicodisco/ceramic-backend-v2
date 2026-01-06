@@ -26,7 +26,7 @@ const challanProductSchema = new mongoose.Schema(
     // Pricing & Quantity
     quantity: {
       type: Number,
-      required: true,
+      required: false, // Make optional for challan creation
     },
     unitPerPrice: {
       type: Number,
@@ -64,6 +64,10 @@ const challanProductSchema = new mongoose.Schema(
       default: '',
     },
     seriesName: {
+      type: String,
+      default: '',
+    },
+    designCode: {
       type: String,
       default: '',
     },

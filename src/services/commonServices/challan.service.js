@@ -137,7 +137,7 @@ exports.getChallanWithProducts = async (identifier, token) => {
               productName: selectionProduct.product_name || 'Unknown Product',
               variantName: selectionProduct.variant_name || '',
               seriesName: selectionProduct.series_name || '',
-              designCode: '', // Will be fetched if needed
+              designCode: selectionProduct.design_code || '', // Fetch designCode from v1
               
               // Selection context
               selectionName: selection.requirementType || 'N/A',

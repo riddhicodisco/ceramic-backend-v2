@@ -7,7 +7,7 @@ const challanProductSchema = Joi.object().keys({
   seriesProductId: Joi.string().custom(objectId).optional(),
   selectionProductId: Joi.string().custom(objectId).optional(), // Added for V1 tracking
   selectionId: Joi.string().custom(objectId).optional(),
-  quantity: Joi.number().min(1).required(),
+  quantity: Joi.number().min(1).optional(),
   unitPerPrice: Joi.number().min(0).required(),
   totalAmount: Joi.number().min(0).required(),
   unit: Joi.string().valid('Sq.Feet/Price', 'Piece/Price').optional(),
