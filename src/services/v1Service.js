@@ -46,6 +46,9 @@ class V1Service {
                 const productObject = {
                     p_id: product.selectionProductId || product._id, // Product ID
                     totalSquareFeet: product.totalSquareFeet || 0,
+                    totalBox: product.totalBox || 0,
+                    unitPerPrice: product.unitPerPrice || product.price || 0,
+                    unit: product.unit || '',
                     isChallan: isChallan || false,
                     challanId: challanId,
                     challanCreated: isChallan || false,

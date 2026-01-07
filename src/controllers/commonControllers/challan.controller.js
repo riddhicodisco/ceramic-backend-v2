@@ -22,11 +22,7 @@ module.exports = {
 
       // Validate selections exist and belong to customer
       for (const selectionId of selectionIds) {
-        // const selection = await selectionService.get({
-        //   _id: new mongoose.Types.ObjectId(selectionId),
-        //   customerId: new mongoose.Types.ObjectId(customerId),
-        //   deletedAt: null
-        // });
+    
         const selection = await v1Service.getSelection(selectionId, req.headers.authorization);
 
         if (!selection) {
@@ -53,7 +49,7 @@ module.exports = {
           // For now, assign to first selection (but this should be fixed in frontend)
           product.selectionId = selectionIds[0];
         }
-        
+
         return {
           ...product,
           selectionId: product.selectionId
@@ -69,7 +65,7 @@ module.exports = {
 
         if (existingChallanProduct) {
           throw new ApiError(
-            httpStatus.BAD_REQUEST, 
+            httpStatus.BAD_REQUEST,
             `Product  is already used in challan ${existingChallanProduct.challanNumber}. Cannot create duplicate challan.`
           );
         }
@@ -326,17 +322,14 @@ module.exports = {
 
       let totalAmount = 0;
       let totalQuantity = 0;
+      let totalSquareFeet = 0;
+      let totalBox = 0;
 
       products.forEach(product => {
-        totalAmount += product.totalAmount;
-        // Use quantity if available, otherwise use totalBox or totalSquareFeet
-        if (product.quantity && !isNaN(product.quantity)) {
-          totalQuantity += product.quantity;
-        } else if (product.totalBox && !isNaN(product.totalBox)) {
-          totalQuantity += product.totalBox;
-        } else if (product.totalSquareFeet && !isNaN(product.totalSquareFeet)) {
-          totalQuantity += product.totalSquareFeet;
-        }
+        totalAmount += product.totalAmount || 0;
+        totalQuantity += product.quantity || 0;
+        totalSquareFeet += product.totalSquareFeet || 0;
+        totalBox += product.totalBox || 0;
       });
 
       challan.products = products;

@@ -102,10 +102,10 @@ exports.getChallanWithProducts = async (identifier, token) => {
 
     // Use products from the selections that were used to create this challan
     const productsWithDetails = [];
-    
+
     // First, get all products from the challan
     const challanProducts = challan.products || [];
-    
+
     // For each selection, get all products and match with challan products
     for (const selection of selections) {
       if (selection && selection.products && selection.products.length > 0) {
@@ -115,37 +115,38 @@ exports.getChallanWithProducts = async (identifier, token) => {
             selectionProduct.product_variant_id.toString() === challanProduct.productVariantId.toString() ||
             selectionProduct._id.toString() === challanProduct.selectionProductId.toString()
           );
-          
+
           // Only include products that are actually in the challan
           if (matchingChallanProduct) {
-            // Create product object using selection product details as primary source
+            // Create product object prioritizing V2 challan data for metrics
             const productWithDetails = {
-              // Basic product info from selection product (primary source)
               _id: selectionProduct._id,
-              productVariantId: selectionProduct.product_variant_id,
-              selectionProductId: selectionProduct.product_id,
+              productVariantId: matchingChallanProduct.productVariantId || selectionProduct.product_variant_id,
+              selectionProductId: matchingChallanProduct.selectionProductId || selectionProduct._id,
               selectionId: selection._id,
-              quantity: selectionProduct.quantity || 1,
-              unitPerPrice: selectionProduct.unitPerPrice || 0,
-              totalAmount: selectionProduct.totalAmount || 0,
-              unit: selectionProduct.unit || 'Sq.Feet/Price',
-              boxPerPiece: selectionProduct.boxPerPiece || null,
-              totalBox: selectionProduct.totalBox || null,
-              totalSquareFeet: selectionProduct.totalSquareFeet || 0,
-              
-              // Product details from selection product
-              productName: selectionProduct.product_name || 'Unknown Product',
-              variantName: selectionProduct.variant_name || '',
-              seriesName: selectionProduct.series_name || '',
-              designCode: selectionProduct.design_code || '', // Fetch designCode from v1
-              
+
+              // Use metrics from challan (V2) if available, otherwise from selection (V1)
+              quantity: matchingChallanProduct.quantity ?? selectionProduct.quantity ?? 1,
+              unitPerPrice: matchingChallanProduct.unitPerPrice ?? (matchingChallanProduct.price) ?? selectionProduct.unitPerPrice ?? 0,
+              totalAmount: matchingChallanProduct.totalAmount ?? selectionProduct.totalAmount ?? 0,
+              unit: matchingChallanProduct.unit || selectionProduct.unit || 'Sq.Feet/Price',
+              boxPerPiece: matchingChallanProduct.boxPerPiece ?? selectionProduct.boxPerPiece ?? null,
+              totalBox: matchingChallanProduct.totalBox ?? selectionProduct.totalBox ?? null,
+              totalSquareFeet: matchingChallanProduct.totalSquareFeet ?? selectionProduct.totalSquareFeet ?? 0,
+
+              // Product details from selection product (still primary source for names)
+              productName: selectionProduct.product_name || matchingChallanProduct.productName || 'Unknown Product',
+              variantName: selectionProduct.variant_name || matchingChallanProduct.variantName || '',
+              seriesName: selectionProduct.series_name || matchingChallanProduct.seriesName || '',
+              designCode: selectionProduct.design_code || matchingChallanProduct.designCode || '',
+
               // Selection context
               selectionName: selection.requirementType || 'N/A',
               selectionStatus: selection.status || null,
               selectionCreatedAt: selection.createdAt || null,
-              
+
               // Additional details
-              isProductDeleted: selectionProduct.isProductDeleted || false,
+              isProductDeleted: selectionProduct.isProductDeleted || matchingChallanProduct.isProductDeleted || false,
             };
 
             productsWithDetails.push(productWithDetails);
