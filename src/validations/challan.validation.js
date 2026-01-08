@@ -61,6 +61,7 @@ module.exports = {
       search: Joi.string().optional().allow(''),
       status: Joi.string().optional().allow('').valid('Pending', 'Running', 'Completed', 'Delivered', 'All'),
       customerId: Joi.string().custom(objectId).optional(),
+      selectionIds: Joi.string().optional().allow(''),
     }),
   },
 

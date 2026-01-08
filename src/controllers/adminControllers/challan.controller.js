@@ -144,7 +144,7 @@ module.exports = {
    * Get all challans with pagination
    */
   getAllChallans: catchAsync(async (req, res) => {
-    const { page = 1, limit = 10, search, status, customerId } = req.query;
+    const { page = 1, limit = 10, search, status, customerId, selectionIds } = req.query;
     const token = req.headers.authorization;
 
     const filter = {
@@ -161,6 +161,10 @@ module.exports = {
 
     if (customerId) {
       filter.customerId = customerId;
+    }
+
+    if (selectionIds) {
+      filter.selectionIds = { $in: selectionIds.split(',').map(id => id.trim()) };
     }
 
     // Use paginate for easier count and page management
@@ -190,12 +194,12 @@ module.exports = {
 
     // Collect all unique customer IDs and selection IDs
     const customerIds = new Set();
-    const selectionIds = new Set();
+    const uniqueSelectionIds = new Set();
 
     challans.forEach(c => {
       if (c.customerId) customerIds.add(c.customerId.toString());
       if (c.selectionIds && Array.isArray(c.selectionIds)) {
-        c.selectionIds.forEach(id => selectionIds.add(id.toString()));
+        c.selectionIds.forEach(id => uniqueSelectionIds.add(id.toString()));
       }
     });
 
@@ -212,7 +216,7 @@ module.exports = {
 
     // Fetch selections in parallel to get product names
     const selectionMap = {};
-    await Promise.all(Array.from(selectionIds).map(async (id) => {
+    await Promise.all(Array.from(uniqueSelectionIds).map(async (id) => {
       try {
         const selection = await v1Service.getSelection(id, token);
         if (selection) selectionMap[id] = selection;
