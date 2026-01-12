@@ -269,6 +269,18 @@ class V1Service {
                 throw new Error(data.message || `HTTP error! status: ${response.status}`);
             }
 
+            // Populate series details if series reference exists
+            if (data?.data?.series && token) {
+                try {
+                    const seriesData = await this.getSeries(data.data.series.toString(), token);
+                    if (seriesData) {
+                        data.data.series_name = seriesData.series_name;
+                    }
+                } catch (error) {
+                    console.warn('Could not fetch series data for series product:', error.message);
+                }
+            }
+
             return data?.data;
         } catch (error) {
             console.error('Error getting series product from v1:', error.message);
@@ -307,6 +319,37 @@ class V1Service {
                 return null;
             }
             throw new Error(`Failed to get series from v1: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get vendor details from v1
+     * @param {string} vendorId - Vendor ID in v1
+     * @param {string} [token] - Authorization token
+     * @returns {Promise} - Fetch response
+     */
+    async getVendor(vendorId, token) {
+        try {
+            const headers = {};
+            if (token) headers.Authorization = token;
+
+            const response = await fetch(`${this.baseURL}/v1/admin/vendor/get/${vendorId}`, { headers });
+            const data = await response.json();
+
+            if (!response.ok) {
+                if (response.status === 404) {
+                    return null;
+                }
+                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            }
+
+            return data?.data;
+        } catch (error) {
+            console.error('Error getting vendor from v1:', error.message);
+            if (error.message.includes('404')) {
+                return null;
+            }
+            throw new Error(`Failed to get vendor from v1: ${error.message}`);
         }
     }
 }
