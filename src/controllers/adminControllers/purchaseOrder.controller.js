@@ -131,6 +131,7 @@ module.exports = {
                   productName: productDetails.productName || v1Product.product_name,
                   variantName: productDetails.variantName || v1Product.variant_name,
                   variantId: productDetails.variantId || v1Product._id?.toString(),
+                  seriesDimension:productDetails.seriesDimension ||v1Product?.series?.series_dimebsion,
                   seriesId: productDetails.seriesId || v1Product.series?._id?.toString(),
                   seriesName: productDetails.seriesName || v1Product.series?.series_name,
                   designCode: productDetails.designCode || v1Product.design_code,
@@ -154,6 +155,7 @@ module.exports = {
             variantName: productDetails.variantName,
             seriesName: productDetails.seriesName,
             designCode: productDetails.designCode,
+            seriesDimension:productDetails.seriesDimension,
             // Ensure IDs are persisted
             variantId: productDetails.variantId,
             seriesId: productDetails.seriesId,
@@ -478,6 +480,7 @@ module.exports = {
           designCode: productDetails.designCode,
           variantId: productDetails.variantId,
           seriesId: productDetails.seriesId,
+          seriesDimension: productDetails.seriesDimension,
           mrp: item.mrp,
           discount: discount,
           quantity: quantity,
