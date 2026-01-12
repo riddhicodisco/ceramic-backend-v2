@@ -143,6 +143,14 @@ module.exports = {
       deletedAt: null,
     };
 
+    // If user is accountant, only show last 7 days records
+    if (req.user.role === 'Accountant') {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      sevenDaysAgo.setHours(0, 0, 0, 0); // Start of day
+      filter.createdAt = { $gte: sevenDaysAgo };
+    }
+
     if (search) {
       filter.challanNumber = { $regex: search, $options: 'i' };
     }

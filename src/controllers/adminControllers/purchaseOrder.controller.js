@@ -209,6 +209,19 @@ module.exports = {
     const filter = {
       deletedAt: null,
     };
+    console.log('🔍 V1 User Data:', JSON.stringify(req.user, null, 2));
+    console.log('🔍 User role check:', req.user.role);
+    console.log('🔍 User role type:', typeof req.user.role);
+    console.log('🔍 Is Accountant?', req.user.role === 'Accountant');
+    console.log('🔍 Is accountant (lowercase)?', req.user.role === 'accountant');
+
+    // If user is accountant, only show last 2 minutes records for testing
+    if (req.user.role === 'Accountant') {
+      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+      console.log('🔍 DEBUG: Current time:', new Date().toISOString());
+      console.log('🔍 DEBUG: Two minutes ago:', twoMinutesAgo.toISOString());
+      filter.createdAt = { $lte: twoMinutesAgo };
+    }
 
     if (search) {
       filter.orderId = { $regex: search, $options: 'i' };
