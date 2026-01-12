@@ -139,6 +139,8 @@ exports.getChallanWithProducts = async (identifier, token) => {
               variantName: selectionProduct.variant_name || matchingChallanProduct.variantName || '',
               seriesName: selectionProduct.series_name || matchingChallanProduct.seriesName || '',
               designCode: selectionProduct.design_code || matchingChallanProduct.designCode || '',
+              seriesId: selectionProduct.series_id || matchingChallanProduct.seriesId || '',
+              variantId: selectionProduct.variant_id || matchingChallanProduct.variantId || '',
 
               // Selection context
               selectionName: selection.requirementType || 'N/A',

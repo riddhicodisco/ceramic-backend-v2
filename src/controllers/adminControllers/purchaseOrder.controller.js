@@ -123,37 +123,22 @@ module.exports = {
             try {
               const v1Product = await v1Service.getSeriesProduct(item.productVariantId.toString(), token);
               if (v1Product) {
+                // Merge V1 details but KEEP frontend provided IDs if valid, or fallback to V1
                 productDetails = {
-                  itemCode: v1Product.item_code || '',
-                  itemName: v1Product.product_name || '',
-                  productName: v1Product.product_name || '',
-                  variantName: v1Product.variant_name || '',
-                  seriesName: v1Product.series_name || '',
-                  designCode: v1Product.design_code || '',
-                };
-              } else {
-                console.warn(`Series product not found in V1: ${item.productVariantId} - product may be deleted or inactive`);
-                // Use existing item data as fallback
-                productDetails = {
-                  itemCode: item.itemCode || '',
-                  itemName: item.itemName || item.productName || '',
-                  productName: item.productName || '',
-                  variantName: item.variantName || '',
-                  seriesName: item.seriesName || '',
-                  designCode: item.designCode || '',
+                  ...productDetails, // Keep existing frontend data (like manual overrides)
+                  itemCode: productDetails.itemCode || v1Product.item_code,
+                  itemName: productDetails.itemName || v1Product.product_name,
+                  productName: productDetails.productName || v1Product.product_name,
+                  variantName: productDetails.variantName || v1Product.variant_name,
+                  variantId: productDetails.variantId || v1Product._id?.toString(),
+                  seriesId: productDetails.seriesId || v1Product.series?._id?.toString(),
+                  seriesName: productDetails.seriesName || v1Product.series?.series_name,
+                  designCode: productDetails.designCode || v1Product.design_code,
                 };
               }
             } catch (error) {
               console.warn(`Could not fetch product details from v1 for ${item.productVariantId}:`, error.message);
-              // Use existing item data as fallback
-              productDetails = {
-                itemCode: item.itemCode || '',
-                itemName: item.itemName || item.productName || 'Unknown Product',
-                productName: item.productName || 'Unknown Product',
-                variantName: item.variantName || '',
-                seriesName: item.seriesName || '',
-                designCode: item.designCode || '',
-              };
+              // Fallback to existing data is already handled by initial assignment
             }
           }
 
@@ -169,6 +154,9 @@ module.exports = {
             variantName: productDetails.variantName,
             seriesName: productDetails.seriesName,
             designCode: productDetails.designCode,
+            // Ensure IDs are persisted
+            variantId: productDetails.variantId,
+            seriesId: productDetails.seriesId,
             mrp: item.mrp,
             discount: discount,
             quantity: quantity,
@@ -257,10 +245,23 @@ module.exports = {
 
     const purchaseOrders = purchaseOrdersResult.results;
 
-    // Return stored enriched data directly (no additional enrichment needed)
-    const enrichedResults = purchaseOrders.map(purchaseOrder => {
-      return purchaseOrder.toObject(); // Return enriched data as stored in database
-    });
+    // Populate vendor details for each purchase order
+    const enrichedResults = await Promise.all(purchaseOrders.map(async (purchaseOrder) => {
+      const poObj = purchaseOrder.toObject();
+
+      if (poObj.vendor) {
+        try {
+          const vendorData = await v1Service.getVendor(poObj.vendor.toString(), token);
+          if (vendorData) {
+            poObj.vendorDetails = vendorData;
+            poObj.vendor = vendorData; // frontend often expects .vendor to be the object
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch vendor for PO ${poObj.orderId}:`, error.message);
+        }
+      }
+      return poObj;
+    }));
 
     res.status(httpStatus.OK).send({
       success: true,
@@ -283,17 +284,44 @@ module.exports = {
 
     // Get purchase order with enriched data from database
     const purchaseOrder = await purchaseOrderService.get({ _id: id, deletedAt: null });
-    
+
     if (!purchaseOrder) {
       throw new ApiError(httpStatus.NOT_FOUND, 'Purchase order not found');
     }
 
-    res.status(httpStatus.OK).send({
-      success: true,
-      message: 'Purchase order details fetched successfully',
-      data: purchaseOrder, // Return enriched data stored in database
-    });
-  }),
+    // Populate vendor details if the field exists
+    if (purchaseOrder.vendor) {
+      // Populate vendor details from V1
+      if (purchaseOrder.vendor) {
+        try {
+          const token = req.headers.authorization;
+          const vendorData = await v1Service.getVendor(purchaseOrder.vendor.toString(), token);
+
+          if (vendorData) {
+            // Attach vendor details
+            const responseData = purchaseOrder.toObject ? purchaseOrder.toObject() : { ...purchaseOrder };
+            responseData.vendorDetails = vendorData;
+            responseData.vendor = vendorData;
+
+            return res.status(httpStatus.OK).send({
+              success: true,
+              message: 'Purchase order details fetched successfully',
+              data: responseData,
+            });
+          }
+        } catch (error) {
+          console.warn('Failed to fetch vendor details from V1:', error.message);
+        }
+      }
+
+      res.status(httpStatus.OK).send({
+        success: true,
+        message: 'Purchase order details fetched successfully',
+        data: purchaseOrder, // Return enriched data stored in database
+      });
+    }
+  }
+  ),
 
   /**
    * Update purchase order
@@ -412,15 +440,16 @@ module.exports = {
             const v1Product = await v1Service.getSeriesProduct(item.productVariantId.toString(), token);
             if (v1Product) {
               productDetails = {
-                itemCode: v1Product.item_code || '',
-                itemName: v1Product.product_name || '',
-                productName: v1Product.product_name || '',
-                variantName: v1Product.variant_name || '',
-                variantId: v1Product._id?.toString() || '',
-                seriesId: v1Product.series?._id?.toString() || '',
-                seriesName: v1Product.series?.series_name || '',
-                seriesDimension: v1Product.series?.dimension || '',
-                designCode: v1Product.design_code || '',
+                ...productDetails,
+                itemCode: productDetails.itemCode || v1Product.item_code,
+                itemName: productDetails.itemName || v1Product.product_name,
+                productName: productDetails.productName || v1Product.product_name,
+                variantName: productDetails.variantName || v1Product.variant_name,
+                variantId: productDetails.variantId || v1Product._id?.toString(),
+                seriesId: productDetails.seriesId || v1Product.series?._id?.toString(),
+                seriesName: productDetails.seriesName || v1Product.series?.series_name,
+                seriesDimension: productDetails.seriesDimension || v1Product.series?.dimension,
+                designCode: productDetails.designCode || v1Product.design_code,
                 // Store complete v1 product data for PWA display
                 product_variant: v1Product,
                 series_product: v1Product.series_product,
@@ -447,6 +476,8 @@ module.exports = {
           variantName: productDetails.variantName,
           seriesName: productDetails.seriesName,
           designCode: productDetails.designCode,
+          variantId: productDetails.variantId,
+          seriesId: productDetails.seriesId,
           mrp: item.mrp,
           discount: discount,
           quantity: quantity,

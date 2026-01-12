@@ -54,10 +54,13 @@ module.exports = {
 
           if (matchingProduct) {
             metadata = {
-              productName: matchingProduct.product_name || '',
-              seriesName: Array.isArray(matchingProduct.series_name) ? matchingProduct.series_name.join(', ') : (matchingProduct.series_name || ''),
+              productName: product.productName || matchingProduct.product_name || '',
+              seriesName: product.seriesName || (Array.isArray(matchingProduct.series_name) ? matchingProduct.series_name.join(', ') : (matchingProduct.series_name || '')),
               dimension: Array.isArray(matchingProduct.series_dimension) ? matchingProduct.series_dimension.join(', ') : (matchingProduct.series_dimension || ''),
-              designCode: matchingProduct.design_code || '',
+              designCode: product.designCode || matchingProduct.design_code || '',
+              variantId: product.variantId || matchingProduct.variant_id?.toString() || '',
+              seriesId: product.seriesId || matchingProduct.series_id?.toString() || '',
+              variantName: product.variantName || matchingProduct.variant_name || '',
             };
           }
         }
@@ -251,6 +254,9 @@ module.exports = {
                 seriesName: Array.isArray(matchingProduct.series_name) ? matchingProduct.series_name.join(', ') : (matchingProduct.series_name || ''),
                 dimension: Array.isArray(matchingProduct.series_dimension) ? matchingProduct.series_dimension.join(', ') : (matchingProduct.series_dimension || ''),
                 designCode: matchingProduct.design_code || '',
+                seriesId: matchingProduct.series_id?.toString() || '',
+                variantId: matchingProduct.variant_id?.toString() || '',
+                variantName: matchingProduct.variant_name || '',
               };
             }
           }
@@ -262,6 +268,9 @@ module.exports = {
             seriesName: product.seriesName || productDetails.seriesName || '',
             dimension: product.dimension || productDetails.dimension || '',
             designCode: product.designCode || productDetails.designCode || '',
+            seriesId: product.seriesId || productDetails.seriesId || '',
+            variantId: product.variantId || productDetails.variantId || '',
+            variantName: product.variantName || productDetails.variantName || '',
           };
         });
       }
@@ -345,10 +354,13 @@ module.exports = {
 
           if (matchingProduct) {
             metadata = {
-              productName: matchingProduct.product_name || '',
-              seriesName: Array.isArray(matchingProduct.series_name) ? matchingProduct.series_name.join(', ') : (matchingProduct.series_name || ''),
+              productName: product.productName || matchingProduct.product_name || '',
+              seriesName: product.seriesName || (Array.isArray(matchingProduct.series_name) ? matchingProduct.series_name.join(', ') : (matchingProduct.series_name || '')),
               dimension: Array.isArray(matchingProduct.series_dimension) ? matchingProduct.series_dimension.join(', ') : (matchingProduct.series_dimension || ''),
-              designCode: matchingProduct.design_code || '',
+              designCode: product.designCode || matchingProduct.design_code || '',
+              variantId: product.variantId || matchingProduct.variant_id?.toString() || '',
+              seriesId: product.seriesId || matchingProduct.series_id?.toString() || '',
+              variantName: product.variantName || matchingProduct.variant_name || '',
             };
           }
         }
