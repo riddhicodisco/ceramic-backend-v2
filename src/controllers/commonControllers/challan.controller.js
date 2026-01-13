@@ -22,7 +22,7 @@ module.exports = {
 
       // Validate selections exist and belong to customer
       for (const selectionId of selectionIds) {
-    
+
         const selection = await v1Service.getSelection(selectionId, req.headers.authorization);
 
         if (!selection) {
@@ -58,16 +58,20 @@ module.exports = {
 
       // Validate that none of the products are already used in other challans
       for (const product of productsWithSelectionId) {
-        const existingChallanProduct = await challanService.get({
-          'products.selectionProductId': product.selectionProductId || product._id,
-          deletedAt: null
-        });
+        const productIdentifier = product.selectionProductId || product._id;
 
-        if (existingChallanProduct) {
-          throw new ApiError(
-            httpStatus.BAD_REQUEST,
-            `Product  is already used in challan ${existingChallanProduct.challanNumber}. Cannot create duplicate challan.`
-          );
+        if (productIdentifier) {
+          const existingChallanProduct = await challanService.get({
+            'products.selectionProductId': productIdentifier,
+            deletedAt: null
+          });
+
+          if (existingChallanProduct) {
+            throw new ApiError(
+              httpStatus.BAD_REQUEST,
+              `Product  is already used in challan ${existingChallanProduct.challanNumber}. Cannot create duplicate challan.`
+            );
+          }
         }
       }
 
@@ -158,17 +162,6 @@ module.exports = {
     const pipeline = [
       { $match: filter },
 
-      // Lookup customer - fix collection name
-      {
-        $lookup: {
-          from: 'customers', // MongoDB collection name is usually plural
-          localField: 'customerId',
-          foreignField: '_id',
-          as: 'customer',
-        },
-      },
-      { $unwind: { path: '$customer', preserveNullAndEmptyArrays: true } },
-
       // Unwind products for processing (only the ones saved with challan)
       { $unwind: { path: '$products', preserveNullAndEmptyArrays: true } },
 
@@ -220,7 +213,6 @@ module.exports = {
         $group: {
           _id: '$_id',
           challanNumber: { $first: '$challanNumber' },
-          customer: { $first: '$customer' },
           customerId: { $first: '$customerId' },
           selectionIds: { $first: '$selectionIds' },
           products: { $push: '$products' },
@@ -241,6 +233,26 @@ module.exports = {
     ];
 
     const challans = await challanService.aggregate(pipeline);
+
+    // Populate customer details from V1
+    if (challans[0] && challans[0].results && challans[0].results.length > 0) {
+      const resultsWithCustomer = await Promise.all(challans[0].results.map(async (challan) => {
+        let customer = null;
+        if (challan.customerId) {
+          try {
+            // Fetch customer from V1 like in getChallan
+            customer = await v1Service.getCustomer(challan.customerId.toString(), req.headers.authorization);
+          } catch (error) {
+            console.warn(`Could not fetch customer ${challan.customerId} from v1:`, error.message);
+          }
+        }
+        return {
+          ...challan,
+          customer: customer
+        };
+      }));
+      challans[0].results = resultsWithCustomer;
+    }
 
     res.status(httpStatus.OK).send({
       success: true,
