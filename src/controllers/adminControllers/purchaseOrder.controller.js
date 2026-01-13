@@ -72,13 +72,6 @@ module.exports = {
         }
       }
 
-      // Debug log for challan validation (matching V1)
-      if (challan && challan.trim() !== '') {
-        console.log('🔍 DEBUG (CREATE): Challan provided, but validation skipped');
-      } else {
-        console.log('🔍 DEBUG (CREATE): No challan provided, skipping validation');
-      }
-
       const session = await mongoose.startSession();
       session.startTransaction();
 
@@ -209,18 +202,13 @@ module.exports = {
     const filter = {
       deletedAt: null,
     };
-    console.log('🔍 V1 User Data:', JSON.stringify(req.user, null, 2));
-    console.log('🔍 User role check:', req.user.role);
-    console.log('🔍 User role type:', typeof req.user.role);
-    console.log('🔍 Is Accountant?', req.user.role === 'Accountant');
-    console.log('🔍 Is accountant (lowercase)?', req.user.role === 'accountant');
 
     // If user is accountant, only show last 2 minutes records for testing
-    if (req.user.role === 'Accountant') {
-      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
-      console.log('🔍 DEBUG: Current time:', new Date().toISOString());
-      console.log('🔍 DEBUG: Two minutes ago:', twoMinutesAgo.toISOString());
-      filter.createdAt = { $lte: twoMinutesAgo };
+    if (req.user.role.role === 'Accountant') {
+       const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      sevenDaysAgo.setHours(0, 0, 0, 0); // Start of day
+      filter.createdAt = { $gte: sevenDaysAgo };
     }
 
     if (search) {
@@ -411,13 +399,6 @@ module.exports = {
       }
     }
 
-    // Debug log for challan validation (matching V1)
-    if (challan && challan.trim() !== '') {
-      console.log('🔍 DEBUG (UPDATE): Challan provided, but validation skipped');
-    } else {
-      console.log('🔍 DEBUG (UPDATE): No challan provided, skipping validation');
-    }
-
     // Update purchase order logic
     if (items && Array.isArray(items)) {
       let totalAmount = 0;
@@ -536,8 +517,6 @@ module.exports = {
         updatedBy: req.user._id,
       }
     );
-
-    console.log('🔍 Saved Purchase Order Items:', JSON.stringify(purchaseOrder.items, null, 2));
 
     res.status(httpStatus.OK).send({
       success: true,

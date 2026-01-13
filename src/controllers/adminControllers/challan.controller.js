@@ -478,17 +478,17 @@ module.exports = {
   /**
    * Get products from selected selections
    */
-  getSelectionProducts: catchAsync(async (req, res) => {
-    const { selectionIds } = req.query;
-    if (!selectionIds) throw new ApiError(httpStatus.BAD_REQUEST, 'Selection IDs are required');
+  // getSelectionProducts: catchAsync(async (req, res) => {
+  //   const { selectionIds } = req.query;
+  //   if (!selectionIds) throw new ApiError(httpStatus.BAD_REQUEST, 'Selection IDs are required');
 
-    const ids = selectionIds.split(',').map(id => new mongoose.Types.ObjectId(id.trim()));
-    const result = await v1Service.getSelectionProductList(ids, req.headers.authorization);
+  //   const ids = selectionIds.split(',').map(id => new mongoose.Types.ObjectId(id.trim()));
+  //   const result = await v1Service.getSelectionProductList(ids, req.headers.authorization);
 
-    res.status(httpStatus.OK).send({
-      success: true,
-      message: 'Selection products fetched successfully',
-      data: result,
-    });
-  }),
+  //   res.status(httpStatus.OK).send({
+  //     success: true,
+  //     message: 'Selection products fetched successfully',
+  //     data: result,
+  //   });
+  // }),
 };

@@ -194,7 +194,7 @@ class V1Service {
 
             const response = await fetch(`${this.baseURL}/v1/admin/role/get/${roleId}`, { headers });
             const data = await response.json();
-
+console.log(data ,'data-----------------')
             if (!response.ok) {
                 if (response.status === 404) {
                     return null;
@@ -350,6 +350,50 @@ class V1Service {
                 return null;
             }
             throw new Error(`Failed to get vendor from v1: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get user details from v1
+     * @param {string} userId - User ID in v1
+     * @param {string} [token] - Authorization token (optional)
+     * @returns {Promise} - Fetch response
+     */
+    async getUser(userId, token = null) {
+        try {
+            const headers = {};
+            if (token) headers.Authorization = token;
+
+            const response = await fetch(`${this.baseURL}/v1/admin/user/get/${userId}`, { headers });
+            const data = await response.json();
+
+            if (!response.ok) {
+                if (response.status === 404) {
+                    console.log('User not found in v1:', userId);
+                    return null;
+                }
+                if (response.status === 401) {
+                    console.log('Authentication failed for v1 user API');
+                    return null;
+                }
+                if (response.status === 403) {
+                    console.log('Permission denied for v1 user API');
+                    return null;
+                }
+                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            }
+
+            return data?.data;
+        } catch (error) {
+            console.error('Error getting user from v1:', error.message);
+            if (error.message.includes('404')) {
+                return null;
+            }
+            if (error.message.includes('401') || error.message.includes('403')) {
+                console.log('Authentication/Permission error for v1 user API');
+                return null;
+            }
+            throw new Error(`Failed to get user from v1: ${error.message}`);
         }
     }
 }

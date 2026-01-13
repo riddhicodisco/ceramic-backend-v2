@@ -144,7 +144,7 @@ module.exports = {
     };
 
     // If user is accountant, only show last 7 days records
-    if (req.user.role === 'Accountant') {
+    if (req.user.role.role === 'Accountant') {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       sevenDaysAgo.setHours(0, 0, 0, 0); // Start of day
@@ -485,60 +485,60 @@ module.exports = {
   /**
    * Get products from selected selections
    */
-  getSelectionProducts: catchAsync(async (req, res) => {
-    const { selectionIds } = req.query;
+  // getSelectionProducts: catchAsync(async (req, res) => {
+  //   const { selectionIds } = req.query;
 
-    if (!selectionIds) {
-      throw new ApiError(httpStatus.BAD_REQUEST, 'Selection IDs are required');
-    }
+  //   if (!selectionIds) {
+  //     throw new ApiError(httpStatus.BAD_REQUEST, 'Selection IDs are required');
+  //   }
 
-    const ids = selectionIds.split(',').map(id => new mongoose.Types.ObjectId(id.trim()));
+  //   const ids = selectionIds.split(',').map(id => new mongoose.Types.ObjectId(id.trim()));
 
-    const pipeline = [
-      { $match: { selectionId: { $in: ids }, deletedAt: null } },
-      {
-        $lookup: {
-          from: 'product_variants',
-          localField: 'productVariantId',
-          foreignField: '_id',
-          as: 'productVariant',
-        },
-      },
-      { $unwind: { path: '$productVariant', preserveNullAndEmptyArrays: true } },
-      {
-        $lookup: {
-          from: 'series_products',
-          localField: 'productVariant.series_product',
-          foreignField: '_id',
-          as: 'seriesProduct',
-        },
-      },
-      { $unwind: { path: '$seriesProduct', preserveNullAndEmptyArrays: true } },
-      {
-        $lookup: {
-          from: 'series',
-          localField: 'seriesProduct.series',
-          foreignField: '_id',
-          as: 'series',
-        },
-      },
-      { $unwind: { path: '$series', preserveNullAndEmptyArrays: true } },
-      {
-        $addFields: {
-          'seriesProduct.name': '$seriesProduct.product_name',
-          'series.name': '$series.series_name',
-          'productVariant.dimension': '$series.dimension'
-        }
-      },
+  //   const pipeline = [
+  //     { $match: { selectionId: { $in: ids }, deletedAt: null } },
+  //     {
+  //       $lookup: {
+  //         from: 'product_variants',
+  //         localField: 'productVariantId',
+  //         foreignField: '_id',
+  //         as: 'productVariant',
+  //       },
+  //     },
+  //     { $unwind: { path: '$productVariant', preserveNullAndEmptyArrays: true } },
+  //     {
+  //       $lookup: {
+  //         from: 'series_products',
+  //         localField: 'productVariant.series_product',
+  //         foreignField: '_id',
+  //         as: 'seriesProduct',
+  //       },
+  //     },
+  //     { $unwind: { path: '$seriesProduct', preserveNullAndEmptyArrays: true } },
+  //     {
+  //       $lookup: {
+  //         from: 'series',
+  //         localField: 'seriesProduct.series',
+  //         foreignField: '_id',
+  //         as: 'series',
+  //       },
+  //     },
+  //     { $unwind: { path: '$series', preserveNullAndEmptyArrays: true } },
+  //     {
+  //       $addFields: {
+  //         'seriesProduct.name': '$seriesProduct.product_name',
+  //         'series.name': '$series.series_name',
+  //         'productVariant.dimension': '$series.dimension'
+  //       }
+  //     },
 
-    ];
+  //   ];
 
-    const products = await selectionProductService.aggregate(pipeline);
+  //   const products = await selectionProductService.aggregate(pipeline);
 
-    res.status(httpStatus.OK).send({
-      success: true,
-      message: 'Selection products fetched successfully',
-      data: products,
-    });
-  }),
+  //   res.status(httpStatus.OK).send({
+  //     success: true,
+  //     message: 'Selection products fetched successfully',
+  //     data: products,
+  //   });
+  // }),
 };

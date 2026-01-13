@@ -65,11 +65,11 @@ module.exports = {
     }),
   },
 
-  getSelectionProducts: {
-    query: Joi.object().keys({
-      selectionIds: Joi.string().required(), // comma-separated IDs
-    }),
-  },
+  // getSelectionProducts: {
+  //   query: Joi.object().keys({
+  //     selectionIds: Joi.string().required(), // comma-separated IDs
+  //   }),
+  // },
 
   downloadChallan: {
     params: Joi.object().keys({

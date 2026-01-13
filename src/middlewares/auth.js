@@ -6,7 +6,6 @@ const { TOKEN_TYPES, ROLES } = require('../helper/constant.helper');
 const { tokenService } = require('../services');
 
 const verifyRoleCallback = (req, resolve, reject, requiredRights) => async (err, user, info) => {
-  console.log(user,'user====')
   if (err) {
     return reject(new ApiError(httpStatus.UNAUTHORIZED, err.message || MESSAGE.unauthorized || 'Unauthorized'));
   }
@@ -26,12 +25,11 @@ const verifyRoleCallback = (req, resolve, reject, requiredRights) => async (err,
   const v1Service = require('../services/v1Service');
 
   // Check if user.role is an ObjectId or a string role name
-  if (mongoose.Types.ObjectId.isValid(user?.role) && String(user?.role).length === 24) {
+  if (mongoose.Types.ObjectId.isValid(user?.role?._id)) {
     // It's an ObjectId, fetch role from V1
     try {
       const token = req.headers.authorization;
-      const v1Role = await v1Service.getRole(user?.role, token);
-      
+      const v1Role = await v1Service.getRole(user?.role?._id, token);
       if (v1Role) {
         role = v1Role; // Use V1 role object
       } else {
@@ -48,7 +46,6 @@ const verifyRoleCallback = (req, resolve, reject, requiredRights) => async (err,
     // It's a role name string (like "Admin", "Accountant"), use it directly
     role = { role: user?.role, permissions: [] };
   }
- 
 
 
   if (!requiredRights.includes(role.role)) {
