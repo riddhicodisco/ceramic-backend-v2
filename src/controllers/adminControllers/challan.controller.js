@@ -491,4 +491,86 @@ module.exports = {
       data: result,
     });
   }),
+  /**
+   * Get customers with challan count
+   */
+  getCustomersWithChallans: catchAsync(async (req, res) => {
+    const { search } = req.query;
+    const token = req.headers.authorization;
+
+    const pipeline = [
+      { $match: { deletedAt: null } },
+      {
+        $group: {
+          _id: '$customerId',
+          challanCount: { $sum: 1 },
+          lastChallanDate: { $max: '$createdAt' }
+        }
+      },
+      { $sort: { lastChallanDate: -1 } }
+    ];
+
+    const aggregatedCustomers = await challanService.aggregate(pipeline);
+
+    if (!aggregatedCustomers || aggregatedCustomers.length === 0) {
+      return res.status(httpStatus.OK).send({
+        success: true,
+        message: 'No customers with challans found',
+        data: [],
+      });
+    }
+
+    // Fetch customer details from V1
+    const customersWithDetails = [];
+    await Promise.all(aggregatedCustomers.map(async (item) => {
+      try {
+        if (!item._id) return;
+        const customer = await v1Service.getCustomer(item._id.toString(), token);
+
+        // Filter by search if provided
+        if (search) {
+          const searchLower = search.toLowerCase();
+          const fullName = `${customer?.first_name || ''} ${customer?.last_name || ''}`.toLowerCase();
+          const phone = customer?.phone || '';
+
+          if (!fullName.includes(searchLower) && !phone.includes(searchLower)) {
+            return;
+          }
+        }
+
+        if (customer) {
+          customersWithDetails.push({
+            ...customer,
+            challanCount: item.challanCount,
+            lastChallanDate: item.lastChallanDate
+          });
+        }
+      } catch (err) {
+        console.warn(`Failed to fetch customer ${item._id} from V1`);
+      }
+    }));
+
+    // Sort again by last challan date (since Promise.all might have mixed order, 
+    // though we are pushing to array, but checking search might filter out)
+    customersWithDetails.sort((a, b) => new Date(b.lastChallanDate) - new Date(a.lastChallanDate));
+
+    res.status(httpStatus.OK).send({
+      success: true,
+      message: 'Customers with challans fetched successfully',
+      data: customersWithDetails,
+    });
+  }),
+
+  /**
+   * Get challans for specific customer
+   */
+  getCustomerChallans: catchAsync(async (req, res) => {
+    const { customerId } = req.params;
+    const { page = 1, limit = 10, status } = req.query;
+
+    // Reuse getAll logic by constructing query
+    req.query.customerId = customerId;
+    return module.exports.getAllChallans(req, res);
+  }),
 };
+

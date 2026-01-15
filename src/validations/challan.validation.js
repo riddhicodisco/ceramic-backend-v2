@@ -71,6 +71,18 @@ module.exports = {
     }),
   },
 
+  getCustomerChallans: {
+    params: Joi.object().keys({
+      customerId: Joi.string().custom(objectId).required(),
+    }),
+    query: Joi.object().keys({
+      page: Joi.number().integer().min(1).default(1),
+      limit: Joi.number().integer().min(1).max(100).default(10),
+      status: Joi.string().optional().allow('').valid('Pending', 'Running', 'Completed', 'Delivered', 'All'),
+    }),
+  },
+
+
   downloadChallan: {
     params: Joi.object().keys({
       id: Joi.string().custom(objectId).required(),
