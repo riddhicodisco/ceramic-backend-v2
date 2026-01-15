@@ -22,7 +22,7 @@ module.exports = {
 
       // Validate selections exist and belong to customer
       for (const selectionId of selectionIds) {
-    
+
         const selection = await v1Service.getSelection(selectionId, req.headers.authorization);
 
         if (!selection) {
@@ -210,8 +210,11 @@ module.exports = {
         $addFields: {
           'products.productName': { $ifNull: ['$products.seriesProduct.product_name', ''] },
           'products.seriesName': { $ifNull: ['$products.series.series_name', ''] },
-          'products.dimension': { $ifNull: ['$products.series.dimension', ''] },
+          'products.dimension': { $ifNull: ['$products.seriesProduct.dimension', ''] },
           'products.designCode': { $ifNull: ['$products.seriesProduct.designCode', ''] },
+          'products.purchaseSqFtPerPiece': { $ifNull: ['$products.seriesProduct.purchaseSqFtPerPiece', 0] },
+          'products.sellSqFtPerPiece': { $ifNull: ['$products.seriesProduct.sellSqFtPerPiece', 0] },
+          'products.piecesPerBox': { $ifNull: ['$products.seriesProduct.piecesPerBox', 0] },
         }
       },
 
@@ -519,7 +522,7 @@ module.exports = {
         $addFields: {
           'seriesProduct.name': '$seriesProduct.product_name',
           'series.name': '$series.series_name',
-          'productVariant.dimension': '$series.dimension'
+          'productVariant.dimension': '$seriesProduct.dimension'
         }
       },
 

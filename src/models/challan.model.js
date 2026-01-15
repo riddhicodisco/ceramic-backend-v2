@@ -22,7 +22,7 @@ const challanProductSchema = new mongoose.Schema(
       ref: 'Selection',
       required: true,
     },
-    
+
     // Pricing & Quantity
     quantity: {
       type: Number,
@@ -41,7 +41,7 @@ const challanProductSchema = new mongoose.Schema(
       enum: ['Sq.Feet/Price', 'Piece/Price'],
       default: 'Sq.Feet/Price',
     },
-    
+
     // Box Information
     boxPerPiece: {
       type: Number,
@@ -53,7 +53,7 @@ const challanProductSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    
+
     // Product Details (NEW - for easy display without lookups)
     productName: {
       type: String,
@@ -71,7 +71,11 @@ const challanProductSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
-    
+    dimension: {
+      type: String,
+      default: '',
+    },
+
     // Additional Product IDs (NEW - for reference)
     productId: {
       type: String, // Can be String or ObjectId from V1
@@ -82,13 +86,13 @@ const challanProductSchema = new mongoose.Schema(
     seriesId: {
       type: String,
     },
-    
+
     // Metadata (NEW)
     isProductDeleted: {
       type: Boolean,
       default: false,
     },
-    
+
     // Selection Context (NEW - for display purposes)
     selectionInfo: {
       selectionId: {

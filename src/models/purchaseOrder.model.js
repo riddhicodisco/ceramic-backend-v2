@@ -50,7 +50,7 @@ const purchaseItemSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
-    seriesDimension: {
+    dimension: {
       type: String,
       default: '',
     },
@@ -75,10 +75,10 @@ const purchaseItemSchema = new mongoose.Schema(
       type: Number,
       required: false,
     },
-    // unitPerPrice: {
-    //   type: Number,
-    //   required: true,
-    // },
+    unitPerPrice: {
+      type: Number,
+      default: 0,
+    },
     totalAmount: {
       type: Number,
       default: 0,
@@ -89,15 +89,19 @@ const purchaseItemSchema = new mongoose.Schema(
       default: 'Sq.Feet/Price',
     },
 
-    // // Box Information
-    // totalBox: {
-    //   type: Number,
-    //   default: 0,
-    // },
-    // totalSquareFeet: {
-    //   type: Number,
-    //   default: 0,
-    // },
+    // Box Information
+    totalBox: {
+      type: Number,
+      default: 0,
+    },
+    boxPerPiece: {
+      type: Number,
+      default: 0,
+    },
+    totalSquareFeet: {
+      type: Number,
+      default: 0,
+    },
 
     // Discount & Pricing
     discount: {

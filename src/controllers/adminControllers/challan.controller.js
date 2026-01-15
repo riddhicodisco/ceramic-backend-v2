@@ -56,7 +56,7 @@ module.exports = {
             metadata = {
               productName: product.productName || matchingProduct.product_name || '',
               seriesName: product.seriesName || (Array.isArray(matchingProduct.series_name) ? matchingProduct.series_name.join(', ') : (matchingProduct.series_name || '')),
-              dimension: Array.isArray(matchingProduct.series_dimension) ? matchingProduct.series_dimension.join(', ') : (matchingProduct.series_dimension || ''),
+              dimension: MatchingProduct.dimension || '',
               designCode: product.designCode || matchingProduct.design_code || '',
               variantId: product.variantId || matchingProduct.variant_id?.toString() || '',
               seriesId: product.seriesId || matchingProduct.series_id?.toString() || '',
@@ -252,7 +252,7 @@ module.exports = {
               productDetails = {
                 productName: matchingProduct.product_name || '',
                 seriesName: Array.isArray(matchingProduct.series_name) ? matchingProduct.series_name.join(', ') : (matchingProduct.series_name || ''),
-                dimension: Array.isArray(matchingProduct.series_dimension) ? matchingProduct.series_dimension.join(', ') : (matchingProduct.series_dimension || ''),
+                dimension: matchingProduct.dimension || '',
                 designCode: matchingProduct.design_code || '',
                 seriesId: matchingProduct.series_id?.toString() || '',
                 variantId: matchingProduct.variant_id?.toString() || '',
@@ -356,7 +356,7 @@ module.exports = {
             metadata = {
               productName: product.productName || matchingProduct.product_name || '',
               seriesName: product.seriesName || (Array.isArray(matchingProduct.series_name) ? matchingProduct.series_name.join(', ') : (matchingProduct.series_name || '')),
-              dimension: Array.isArray(matchingProduct.series_dimension) ? matchingProduct.series_dimension.join(', ') : (matchingProduct.series_dimension || ''),
+              dimension: matchingProduct.dimension || '',
               designCode: product.designCode || matchingProduct.design_code || '',
               variantId: product.variantId || matchingProduct.variant_id?.toString() || '',
               seriesId: product.seriesId || matchingProduct.series_id?.toString() || '',

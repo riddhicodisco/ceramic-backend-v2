@@ -94,17 +94,28 @@ module.exports = {
         const enrichedItems = [];
 
         for (const item of items) {
-          const mrp = parseFloat(item.mrp);
+          const mrp = parseFloat(item.mrp) || 0;
+          const unitPerPrice = parseFloat(item.unitPerPrice) || mrp;
           const discount = parseFloat(item.discount) || 0;
-          const quantity = parseFloat(item.quantity);
+          const quantity = parseFloat(item.quantity) || 0;
+          const totalBox = parseFloat(item.totalBox) || 0;
+          const boxPerPiece = parseFloat(item.boxPerPiece) || 0;
+          const totalSquareFeet = parseFloat(item.totalSquareFeet) || 0;
+          const unit = item.unit || 'Sq.Feet/Price';
 
           // Calculate total based on unit
-          const discountAmount = (discount / 100) * mrp;
-          const price = mrp - discountAmount;
-          const total = price * quantity;
+          let itemTotal = 0;
+          if (unit === 'Piece/Price') {
+            itemTotal = totalBox * boxPerPiece * unitPerPrice;
+          } else {
+            itemTotal = (totalSquareFeet || quantity) * unitPerPrice;
+          }
+
+          const discountAmount = (discount / 100) * itemTotal;
+          const total = itemTotal - discountAmount;
 
           totalAmount += total;
-          totalQuantity += quantity
+          totalQuantity += (unit === 'Piece/Price' ? totalBox * boxPerPiece : (totalSquareFeet || quantity));
 
           // Try to fetch product details from v1 for enrichment
           let productDetails = {
@@ -115,7 +126,7 @@ module.exports = {
             variantId: item.variantId || '',
             seriesId: item.seriesId || '',
             seriesName: item.seriesName || item.series || '',
-            seriesDimension: item.seriesDimension || '',
+            dimension: item.dimension || '',
             designCode: item.designCode || '',
           };
 
@@ -131,10 +142,13 @@ module.exports = {
                   productName: productDetails.productName || v1Product.product_name,
                   variantName: productDetails.variantName || v1Product.variant_name,
                   variantId: productDetails.variantId || v1Product._id?.toString(),
-                  seriesDimension:productDetails.seriesDimension ||v1Product?.series?.series_dimebsion,
+                  dimension: productDetails.dimension || v1Product.dimension || "",
                   seriesId: productDetails.seriesId || v1Product.series?._id?.toString(),
                   seriesName: productDetails.seriesName || v1Product.series?.series_name,
                   designCode: productDetails.designCode || v1Product.design_code,
+                  purchaseSqFtPerPiece: v1Product.purchaseSqFtPerPiece || 0,
+                  sellSqFtPerPiece: v1Product.sellSqFtPerPiece || 0,
+                  piecesPerBox: v1Product.piecesPerBox || 0,
                 };
               }
             } catch (error) {
@@ -155,15 +169,22 @@ module.exports = {
             variantName: productDetails.variantName,
             seriesName: productDetails.seriesName,
             designCode: productDetails.designCode,
-            seriesDimension:productDetails.seriesDimension,
+            dimension: productDetails.dimension,
             // Ensure IDs are persisted
             variantId: productDetails.variantId,
             seriesId: productDetails.seriesId,
-            mrp: item.mrp,
+            productId: productDetails.productId || item.productId,
+            quantity: (unit === 'Piece/Price' ? totalBox * boxPerPiece : (totalSquareFeet || quantity)),
+            mrp: mrp,
+            unitPerPrice: unitPerPrice,
             discount: discount,
-            quantity: quantity,
-            price: price.toFixed(2),
-            total: total.toFixed(2),
+            price: unitPerPrice - (discount / 100) * unitPerPrice,
+            totalAmount: total,
+            totalSquareFeet: (unit === 'Piece/Price' ? (totalBox * boxPerPiece * (productDetails.sellSqFtPerPiece || 1)) : (totalSquareFeet || quantity)),
+            totalBox: totalBox,
+            boxPerPiece: boxPerPiece,
+            unit: unit,
+            total: total,
             challanId: item.challanId && item.challanId.trim() !== '' ? item.challanId : undefined,
           });
         }
@@ -412,16 +433,28 @@ module.exports = {
       const enrichedItems = [];
 
       for (const item of items) {
-        const mrp = parseFloat(item.mrp);
+        const mrp = parseFloat(item.mrp) || 0;
+        const unitPerPrice = parseFloat(item.unitPerPrice) || mrp;
         const discount = parseFloat(item.discount) || 0;
-        const quantity = parseFloat(item.quantity);
+        const quantity = parseFloat(item.quantity) || 0;
+        const totalBox = parseFloat(item.totalBox) || 0;
+        const boxPerPiece = parseFloat(item.boxPerPiece) || 0;
+        const totalSquareFeet = parseFloat(item.totalSquareFeet) || 0;
+        const unit = item.unit || 'Sq.Feet/Price';
 
-        const discountAmount = (discount / 100) * mrp;
-        const price = mrp - discountAmount;
-        const total = price * quantity;
+        // Calculate total based on unit
+        let itemTotal = 0;
+        if (unit === 'Piece/Price') {
+          itemTotal = totalBox * boxPerPiece * unitPerPrice;
+        } else {
+          itemTotal = (totalSquareFeet || quantity) * unitPerPrice;
+        }
+
+        const discountAmount = (discount / 100) * itemTotal;
+        const total = itemTotal - discountAmount;
 
         totalAmount += total;
-        totalQuantity += quantity;
+        totalQuantity += (unit === 'Piece/Price' ? totalBox * boxPerPiece : (totalSquareFeet || quantity));
 
         // Store complete series details from frontend
         let productDetails = {
@@ -432,7 +465,7 @@ module.exports = {
           variantId: item.variantId || '',
           seriesId: item.seriesId || '',
           seriesName: item.seriesName || '',
-          seriesDimension: item.seriesDimension || '',
+          dimension: item.dimension || '',
           designCode: item.designCode || '',
         };
 
@@ -450,8 +483,11 @@ module.exports = {
                 variantId: productDetails.variantId || v1Product._id?.toString(),
                 seriesId: productDetails.seriesId || v1Product.series?._id?.toString(),
                 seriesName: productDetails.seriesName || v1Product.series?.series_name,
-                seriesDimension: productDetails.seriesDimension || v1Product.series?.dimension,
+                dimension: productDetails.dimension || v1Product.dimension || "",
                 designCode: productDetails.designCode || v1Product.design_code,
+                purchaseSqFtPerPiece: v1Product.purchaseSqFtPerPiece || 0,
+                sellSqFtPerPiece: v1Product.sellSqFtPerPiece || 0,
+                piecesPerBox: v1Product.piecesPerBox || 0,
                 // Store complete v1 product data for PWA display
                 product_variant: v1Product,
                 series_product: v1Product.series_product,
@@ -480,12 +516,19 @@ module.exports = {
           designCode: productDetails.designCode,
           variantId: productDetails.variantId,
           seriesId: productDetails.seriesId,
-          seriesDimension: productDetails.seriesDimension,
-          mrp: item.mrp,
+          productId: productDetails.productId || item.productId,
+          dimension: productDetails.dimension,
+          quantity: (unit === 'Piece/Price' ? totalBox * boxPerPiece : (totalSquareFeet || quantity)),
+          mrp: mrp,
+          unitPerPrice: unitPerPrice,
           discount: discount,
-          quantity: quantity,
-          price: price.toFixed(2),
-          total: total.toFixed(2),
+          price: unitPerPrice - (discount / 100) * unitPerPrice,
+          totalAmount: total,
+          totalSquareFeet: (unit === 'Piece/Price' ? (totalBox * boxPerPiece * (productDetails.sellSqFtPerPiece || 1)) : (totalSquareFeet || quantity)),
+          totalBox: totalBox,
+          boxPerPiece: boxPerPiece,
+          unit: unit,
+          total: total,
           challanId: item.challanId && item.challanId.trim() !== '' ? item.challanId : undefined,
           // Store complete v1 enriched data for PWA display
           product_variant: productDetails.product_variant,
