@@ -72,13 +72,6 @@ module.exports = {
         }
       }
 
-      // Debug log for challan validation (matching V1)
-      if (challan && challan.trim() !== '') {
-        console.log('🔍 DEBUG (CREATE): Challan provided, but validation skipped');
-      } else {
-        console.log('🔍 DEBUG (CREATE): No challan provided, skipping validation');
-      }
-
       const session = await mongoose.startSession();
       session.startTransaction();
 
@@ -230,6 +223,14 @@ module.exports = {
     const filter = {
       deletedAt: null,
     };
+
+    // If user is accountant, only show last 2 minutes records for testing
+    if (req.user.role.role === 'Accountant') {
+       const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      sevenDaysAgo.setHours(0, 0, 0, 0); // Start of day
+      filter.createdAt = { $gte: sevenDaysAgo };
+    }
 
     if (search) {
       filter.orderId = { $regex: search, $options: 'i' };
@@ -419,13 +420,6 @@ module.exports = {
       }
     }
 
-    // Debug log for challan validation (matching V1)
-    if (challan && challan.trim() !== '') {
-      console.log('🔍 DEBUG (UPDATE): Challan provided, but validation skipped');
-    } else {
-      console.log('🔍 DEBUG (UPDATE): No challan provided, skipping validation');
-    }
-
     // Update purchase order logic
     if (items && Array.isArray(items)) {
       let totalAmount = 0;
@@ -566,8 +560,6 @@ module.exports = {
         updatedBy: req.user._id,
       }
     );
-
-    console.log('🔍 Saved Purchase Order Items:', JSON.stringify(purchaseOrder.items, null, 2));
 
     res.status(httpStatus.OK).send({
       success: true,

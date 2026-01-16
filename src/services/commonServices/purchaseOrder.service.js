@@ -103,7 +103,6 @@ exports.getPurchaseOrderWithProducts = async (identifier, token) => {
           seriesName: item.seriesName || '',
           designCode: item.designCode || '',
         };
-console.log(item,'item')
         // If we have seriesProductId, try to get more details from v1
         if ((item.seriesProductId) && token) {
           try {

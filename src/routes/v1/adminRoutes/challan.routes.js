@@ -29,12 +29,12 @@ router.get(
   challanController.getAllChallans
 );
 
-router.get(
-  '/selection-products',
-  authorizeV3(ROLES.admin, ROLES.accountant),
-  validate(challanValidation.getSelectionProducts),
-  challanController.getSelectionProducts
-);
+// router.get(
+//   '/selection-products',
+//   authorizeV3(ROLES.admin, ROLES.accountant),
+//   validate(challanValidation.getSelectionProducts),
+//   challanController.getSelectionProducts
+// );
 
 router.get(
   '/customers',
