@@ -1,117 +1,250 @@
 const httpStatus = require('http-status');
 const ApiError = require('../../utils/apiError');
 const catchAsync = require('../../utils/catchAsync');
-const { challanService, customerService } = require('../../services/commonServices');
+const { challanService } = require('../../services/commonServices');
 const { paginationQuery } = require('../../helper/mongoose.helper');
 const mongoose = require('mongoose');
 const v1Service = require('../../services/v1Service');
+const axios = require('axios');
 
 module.exports = {
+
   /**
-   * Create a new challan
+   * Create a new challan (Common for both Frontend and Admin)
    */
   createChallan: catchAsync(async (req, res) => {
     try {
-      const { customerId, selectionIds, products, remarks, status } = req.body;
+      const { customerId, customerMode, newCustomerData, selectionIds, products, remarks, status, assignTo, newCustomerSelections } = req.body;
+      const token = req.headers.authorization;
 
-      // Validate customer exists
-      const customer = await v1Service.getCustomer(customerId, req.headers.authorization); // Fetch from V1
-      if (!customer) {
-        throw new ApiError(httpStatus.NOT_FOUND, 'Customer not found (in V1)');
+      // Validation: customerId is required for existing customer, optional for new customer
+      if (customerMode === "existing" && !customerId) {
+        throw new ApiError(httpStatus.BAD_REQUEST, 'Customer ID is required for existing customer');
       }
 
-      // Validate selections exist and belong to customer
-      const selectionsData = [];
-      for (const selectionId of selectionIds) {
+      if (customerMode === "new" && !newCustomerData) {
+        throw new ApiError(httpStatus.BAD_REQUEST, 'New customer data is required for new customer');
+      }
 
-        const selection = await v1Service.getSelection(selectionId, req.headers.authorization);
+      let finalCustomerId = customerId;
 
+      // Handle new customer creation
+      if (customerMode === "new" && newCustomerData) {
+        
+        try {
+          // Create customer via V1 API
+          const customerResponse = await axios.post(`${process.env.V1_BASE_URL}/v1/mobile/staff/customer/create-customer`, newCustomerData, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': token
+            }
+          });
+
+          if (customerResponse.status !== 200 && customerResponse.status !== 201) {
+            throw new ApiError(httpStatus.BAD_REQUEST, `Failed to create customer: ${customerResponse.data?.message || 'Unknown error'}`);
+          }
+
+          const customerRes = customerResponse.data;
+          if (customerRes?.data?._id) {
+            finalCustomerId = customerRes.data._id;
+          } else {
+            throw new ApiError(httpStatus.BAD_REQUEST, 'Failed to create customer: No customer ID returned');
+          }
+        } catch (error) {
+          if (error.response?.status === 400 && error.response?.data?.message) {
+            throw new ApiError(httpStatus.BAD_REQUEST, error.response.data.message);
+          }
+          throw new ApiError(httpStatus.BAD_REQUEST, `Failed to create customer: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+        }
+      } else {
+        const customer = await v1Service.getCustomer(finalCustomerId, token);
+        if (!customer) {
+          throw new ApiError(httpStatus.NOT_FOUND, 'Customer not found (in V1)');
+        }
+      }
+
+      let finalSelectionIds = [...selectionIds];
+      let createdSelectionsData = null; // Store selection response data
+
+      // Handle new customer selections creation
+      if (newCustomerSelections && newCustomerSelections.length > 0) {
+       
+        
+        const selectionPayload = {
+          customerId: finalCustomerId, 
+          selectionData: newCustomerSelections.map((s, index) => {
+            
+            return {
+              requirementType: s.requirementType,
+              followUp: s.followUpDate,
+              productVariantId: s.products
+                .map((p) => ({
+                  p_id: p.productVariantId,
+                  totalBox: p.totalBox || "",
+                  boxPerPiece: p.boxPerPiece || "",
+                  totalSquareFeet: Number(p.totalSquareFeet) || 0,
+                  unitPerPrice: Number(p.unitPerPrice) || 0,
+                  unit: p.unit,
+                })),
+            };
+          }),
+        };
+
+        const selectionResponse = await axios.post(`${process.env.V1_BASE_URL}/v1/mobile/staff/selection/create`, selectionPayload, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token
+          }
+        });
+
+        if (selectionResponse.status !== 200 && selectionResponse.status !== 201) {
+          throw new ApiError(httpStatus.BAD_REQUEST, `Failed to create selections: ${selectionResponse.data?.message || 'Unknown error'}`);
+        }
+
+        const selRes = selectionResponse.data;
+        createdSelectionsData = selRes; // Store for later use
+
+        // Extract selection IDs from V1 response and update products
+        if (selRes?.data) {
+          const createdSelections = Array.isArray(selRes.data) ? selRes.data : [selRes.data];
+
+          createdSelections.forEach((createdSel, index) => {
+            const tempSel = newCustomerSelections[index];
+            if (tempSel) {
+              finalSelectionIds.push(createdSel._id);
+            }
+          });
+        }
+
+      }
+
+      // Handle customer assignment
+      if (assignTo && assignTo.length > 0) {
+        const assignPayload = {
+          customer_id: finalCustomerId, // Use the final customer ID (newly created or existing)
+          staff_id: assignTo,
+        };
+
+        // Assign customer via V1 API
+        const assignResponse = await axios.put(`${process.env.V1_BASE_URL}/v1/mobile/staff/customer/assign-staff`, assignPayload, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token
+          }
+        });
+
+        if (assignResponse.status !== 200 && assignResponse.status !== 201) {
+          throw new ApiError(httpStatus.BAD_REQUEST, `Failed to assign customer: ${assignResponse.data?.message || 'Unknown error'}`);
+        }
+      }
+      const selectionMap = {};
+      for (const selectionId of finalSelectionIds) {
+        const selection = await v1Service.getSelection(selectionId, token);
         if (!selection) {
           throw new ApiError(httpStatus.BAD_REQUEST, `Selection ${selectionId} not found`);
         }
-
-        // Validate selection belongs to the customer
-        if (selection.customerId.toString() !== customerId) {
+        if (selection.customerId.toString() !== finalCustomerId) {
           throw new ApiError(httpStatus.BAD_REQUEST, `Selection ${selectionId} does not belong to this customer`);
         }
-
-        // Store selection data for later use
-        selectionsData.push({
-          _id: selection._id,
-          name: selection.requirementType || 'N/A'
-        });
+        selectionMap[selectionId] = selection;
       }
 
-      // Calculate totals
+      // Calculate totals and enrich products with metadata
       let totalAmount = 0;
       let totalQuantity = 0;
       let totalSquareFeet = 0;
       let totalBox = 0;
 
-      // Add selectionId and selectionName to each product in the products array
-      // Each product should already have its selectionId from the frontend
-      const productsWithSelectionId = products.map(product => {
-        // If product doesn't have selectionId, we need to determine it
-        if (!product.selectionId) {
-          // For now, assign to first selection (but this should be fixed in frontend)
-          product.selectionId = selectionIds[0];
-        }
+      const enrichedProducts = products.map(product => {
+        const isTempSelection = product.selectionId === null || !product.selectionId;
+        let realSelectionId = product.selectionId;
+        let realSelectionProductId = product.selectionProductId;
 
-        // Find the selection name for this product
-        const selectionData = selectionsData.find(s => s._id.toString() === product.selectionId);
-        const selectionName = selectionData ? selectionData.name : 'N/A';
-
-        return {
-          ...product,
-          selectionId: product.selectionId,
-          selectionName: selectionName
-        };
-      });
-
-      // Validate that none of the products are already used in other challans
-      for (const product of productsWithSelectionId) {
-        const productIdentifier = product.selectionProductId || product._id;
-
-        if (productIdentifier) {
-          const existingChallanProduct = await challanService.get({
-            'products.selectionProductId': productIdentifier,
-            deletedAt: null
-          });
-
-          if (existingChallanProduct) {
-            throw new ApiError(
-              httpStatus.BAD_REQUEST,
-              `Product  is already used in challan ${existingChallanProduct.challanNumber}. Cannot create duplicate challan.`
-            );
+        // For new customer selections, update the selectionId and selectionProductId with newly created IDs
+        if (isTempSelection && createdSelectionsData?.data) {
+          const createdSelections = Array.isArray(createdSelectionsData.data) ? createdSelectionsData.data : [createdSelectionsData.data];
+          // Use first created selection ID for all new products
+          if (createdSelections.length > 0) {
+            realSelectionId = createdSelections[0]._id;
+            
+            // Find the matching product in created selection to get new product ID
+            const createdSelection = createdSelections[0];
+            if (createdSelection?.products) {
+              const matchingCreatedProduct = createdSelection.products.find(cp => 
+                cp.p_id === product.productVariantId || cp.product_variant_id === product.productVariantId
+              );
+              if (matchingCreatedProduct) {
+                realSelectionProductId = matchingCreatedProduct._id;
+              }
+            }
           }
         }
-      }
 
-      productsWithSelectionId.forEach(product => {
+        const selection = selectionMap[realSelectionId || finalSelectionIds[0]];
+
+        let metadata = {};
+        if (selection) {
+          const matchingProduct = selection.products?.find(p =>
+            (p.product_variant_id && p.product_variant_id.toString() === product.productVariantId?.toString()) ||
+            (p._id && p._id.toString() === realSelectionProductId?.toString())
+          );
+
+          if (matchingProduct) {
+            metadata = {
+              productName: product.productName || matchingProduct.product_name || '',
+              seriesName: product.seriesName || (Array.isArray(matchingProduct.series_name) ? matchingProduct.series_name.join(', ') : (matchingProduct.series_name || '')),
+              dimension: matchingProduct.dimension || '',
+              designCode: product.designCode || matchingProduct.design_code || '',
+              variantId: product.variantId || matchingProduct.variant_id?.toString() || '',
+              seriesId: product.seriesId || matchingProduct.series_id?.toString() || '',
+              variantName: product.variantName || matchingProduct.variant_name || '',
+            };
+          }
+        }
+
         totalAmount += product.totalAmount || 0;
         totalQuantity += product.quantity || 0;
         totalSquareFeet += product.totalSquareFeet || 0;
         totalBox += product.totalBox || 0;
-      });
 
-      // Start a session for transaction
+        const finalProduct = {
+          ...product,
+          // ...metadata,
+          selectionId: realSelectionId,
+          selectionProductId: realSelectionProductId
+        };
+
+        return finalProduct;
+      });
+      // Validate products not already used
+      for (const product of enrichedProducts) {
+        const existingChallanProduct = await challanService.get({
+          'products.selectionProductId': product.selectionProductId || product._id,
+          deletedAt: null
+        });
+        if (existingChallanProduct) {
+          throw new ApiError(
+            httpStatus.BAD_REQUEST,
+            `Product is already used in challan ${existingChallanProduct.challanNumber}. Cannot create duplicate challan.`
+          );
+        }
+      }
+
       const session = await mongoose.startSession();
       session.startTransaction();
 
       try {
-        // Generate challan number with transaction
         const challanNumber = await challanService.generateChallanWithTransaction(session);
 
-        // Create challan
         const challan = await challanService.create({
           challanNumber,
-          customerId,
-          selectionIds,
-          products: productsWithSelectionId, // Use products with selectionId
+          customerId: finalCustomerId, // Use the final customer ID (newly created or existing)
+          selectionIds: finalSelectionIds,
+          products: enrichedProducts,
           totalAmount,
           totalQuantity,
-          totalSquareFeet, // Add totalSquareFeet
-          totalBox, // Add totalBox
+          totalSquareFeet,
+          totalBox,
           status: status || 'Pending',
           remarks,
           createdBy: req.user._id,
@@ -119,25 +252,18 @@ module.exports = {
 
         await session.commitTransaction();
 
+        // Update v1 flags
+        try {
+          await v1Service.updateMultipleProductChallanFlags(enrichedProducts, true, token, challan._id, challan.challanNumber, 'Created');
+        } catch (v1Error) {
+          console.warn('Could not update product flags in v1:', v1Error.message);
+        }
+
         res.status(httpStatus.CREATED).send({
           success: true,
           message: 'Challan created successfully',
           data: challan,
         });
-
-        // Update isChallan flag in selection_products table using multiple update API
-        try {
-          await v1Service.updateMultipleProductChallanFlags(
-            productsWithSelectionId,  // Products with selectionId
-            true,  // challanCreated: true
-            req.headers.authorization,
-            challan._id,  // challanId
-            challanNumber,  // challanNumber
-            challan.status  // challanStatus (actual status from challan)
-          );
-        } catch (v1Error) {
-          console.warn('Could not update product flags in v1:', v1Error.message);
-        }
       } catch (error) {
         await session.abortTransaction();
         throw error;
@@ -491,8 +617,6 @@ module.exports = {
       data: deletedChallan,
     });
   }),
-
-
 
   /**
    * Download challan PDF

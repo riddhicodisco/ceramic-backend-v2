@@ -11,7 +11,7 @@ router.post(
   '/create',
   authorizeV3(ROLES.admin, ROLES.accountant),
   validate(challanValidation.createChallan),
-  challanController.createChallan
+  challanController.createChallan // Use common controller
 );
 
 router.get(

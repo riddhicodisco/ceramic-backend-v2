@@ -79,7 +79,7 @@ module.exports = {
           })),
         };
 
-        const selectionResponse = await axios.post(`${process.env.V1_BASE_URL}/mobile/staff/selection/create`, selectionPayload, {
+        const selectionResponse = await axios.post(`${process.env.V1_BASE_URL}/v1/mobile/staff/selection/create`, selectionPayload, {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': token
