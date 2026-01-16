@@ -21,6 +21,7 @@ module.exports = {
       }
 
       // Validate selections exist and belong to customer
+      const selectionsData = [];
       for (const selectionId of selectionIds) {
 
         const selection = await v1Service.getSelection(selectionId, req.headers.authorization);
@@ -33,6 +34,12 @@ module.exports = {
         if (selection.customerId.toString() !== customerId) {
           throw new ApiError(httpStatus.BAD_REQUEST, `Selection ${selectionId} does not belong to this customer`);
         }
+
+        // Store selection data for later use
+        selectionsData.push({
+          _id: selection._id,
+          name: selection.requirementType || 'N/A'
+        });
       }
 
       // Calculate totals
@@ -41,7 +48,7 @@ module.exports = {
       let totalSquareFeet = 0;
       let totalBox = 0;
 
-      // Add selectionId to each product in the products array
+      // Add selectionId and selectionName to each product in the products array
       // Each product should already have its selectionId from the frontend
       const productsWithSelectionId = products.map(product => {
         // If product doesn't have selectionId, we need to determine it
@@ -50,9 +57,14 @@ module.exports = {
           product.selectionId = selectionIds[0];
         }
 
+        // Find the selection name for this product
+        const selectionData = selectionsData.find(s => s._id.toString() === product.selectionId);
+        const selectionName = selectionData ? selectionData.name : 'N/A';
+
         return {
           ...product,
-          selectionId: product.selectionId
+          selectionId: product.selectionId,
+          selectionName: selectionName
         };
       });
 
@@ -209,13 +221,22 @@ module.exports = {
       // Add frontend-friendly fields
       {
         $addFields: {
-          'products.productName': { $ifNull: ['$products.seriesProduct.product_name', ''] },
-          'products.seriesName': { $ifNull: ['$products.series.series_name', ''] },
-          'products.dimension': { $ifNull: ['$products.seriesProduct.dimension', ''] },
-          'products.designCode': { $ifNull: ['$products.seriesProduct.designCode', ''] },
-          'products.purchaseSqFtPerPiece': { $ifNull: ['$products.seriesProduct.purchaseSqFtPerPiece', 0] },
-          'products.sellSqFtPerPiece': { $ifNull: ['$products.seriesProduct.sellSqFtPerPiece', 0] },
-          'products.piecesPerBox': { $ifNull: ['$products.seriesProduct.piecesPerBox', 0] },
+          'products.productName': { $ifNull: ['$products.productName', ''] },
+          'products.seriesName': { $ifNull: ['$products.seriesName', ''] },
+          'products.dimension': { $ifNull: ['$products.dimension', ''] },
+          'products.designCode': { $ifNull: ['$products.designCode', ''] },
+          'products.totalBox': { $ifNull: ['$products.totalBox', 0] },
+          'products.totalSquareFeet': { $ifNull: ['$products.totalSquareFeet', 0] },
+          'products.boxPerPiece': { $ifNull: ['$products.boxPerPiece', 0] },
+          'products.unitPerPrice': { $ifNull: ['$products.unitPerPrice', 0] },
+          'products.unit': { $ifNull: ['$products.unit', 'Sq.Feet/Price'] },
+          'products.totalAmount': { $ifNull: ['$products.totalAmount', 0] },
+          'products.selectionId': { $ifNull: ['$products.selectionId', ''] },
+          'products.selectionName': { $ifNull: ['$products.selectionName', 'N/A'] },
+          'products.selectionProductId': { $ifNull: ['$products.selectionProductId', ''] },
+          'products.variantId': { $ifNull: ['$products.variantId', ''] },
+          'products.variantName': { $ifNull: ['$products.variantName', ''] },
+          'products.seriesId': { $ifNull: ['$products.seriesId', ''] },
         }
       },
 

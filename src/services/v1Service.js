@@ -1,4 +1,5 @@
 const config = require('../config/config');
+const axios = require('axios');
 
 class V1Service {
     constructor() {
@@ -63,16 +64,13 @@ class V1Service {
 
             const requestBody = { updates };
 
-            const response = await fetch(`${this.baseURL}/v1/mobile/staff/selection/update-multiple-challan-flags`, {
-                method: 'PUT',
-                headers: headers,
-                body: JSON.stringify(requestBody)
+            const response = await axios.put(`${this.baseURL}/v1/mobile/staff/selection/update-multiple-challan-flags`, requestBody, {
+                headers: headers
             });
 
-            const data = await response.json();
+            const data = response.data;
 
-
-            if (!response.ok) {
+            if (response.status !== 200 && response.status !== 201) {
                 throw new Error(data.message || `HTTP error! status: ${response.status}`);
             }
 
@@ -106,10 +104,10 @@ class V1Service {
             const headers = {};
             if (token) headers.Authorization = token;
 
-            const response = await fetch(`${this.baseURL}/v1/admin/series-product/get/${productId}`, { headers });
-            const data = await response.json();
+            const response = await axios.get(`${this.baseURL}/v1/admin/series-product/get/${productId}`, { headers });
+            const data = response.data;
 
-            if (!response.ok) {
+            if (response.status !== 200) {
                 throw new Error(data.message || `HTTP error! status: ${response.status}`);
             }
 
@@ -131,12 +129,12 @@ class V1Service {
             const headers = {};
             if (token) headers.Authorization = token;
 
-            const response = await fetch(`${this.baseURL}/v1/admin/staff/customer-details/${customerId}`, { headers });
-            const data = await response.json();
-            if (!response.ok) {
-                if (response.status === 404) {
-                    return null;
-                }
+            const response = await axios.get(`${this.baseURL}/v1/admin/staff/customer-details/${customerId}`, { headers });
+            const data = response.data;
+            if (response.status === 404) {
+                return null;
+            }
+            if (response.status !== 200) {
                 throw new Error(data.message || `HTTP error! status: ${response.status}`);
             }
 
@@ -161,13 +159,13 @@ class V1Service {
             const headers = {};
             if (token) headers.Authorization = token;
 
-            const response = await fetch(`${this.baseURL}/v1/admin/selection/get/${selectionId}`, { headers });
-            const data = await response.json();
+            const response = await axios.get(`${this.baseURL}/v1/admin/selection/get/${selectionId}`, { headers });
+            const data = response.data;
 
-            if (!response.ok) {
-                if (response.status === 404) {
-                    return null;
-                }
+            if (response.status === 404) {
+                return null;
+            }
+            if (response.status !== 200) {
                 throw new Error(data.message || `HTTP error! status: ${response.status}`);
             }
 

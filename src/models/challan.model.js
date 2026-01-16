@@ -20,10 +20,14 @@ const challanProductSchema = new mongoose.Schema(
     selectionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Selection',
-      required: true,
+      required: false,
+    },
+    selectionName: {
+      type: String,
+      default: 'N/A',
     },
 
-    // Pricing & Quantity
+    
     quantity: {
       type: Number,
       required: false, // Make optional for challan creation
@@ -39,7 +43,7 @@ const challanProductSchema = new mongoose.Schema(
     unit: {
       type: String,
       enum: ['Sq.Feet/Price', 'Piece/Price'],
-      default: 'Sq.Feet/Price',
+      required: true,
     },
 
     // Box Information

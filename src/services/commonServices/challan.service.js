@@ -100,60 +100,69 @@ exports.getChallanWithProducts = async (identifier, token) => {
       }
     }
 
-    // Use products from the selections that were used to create this challan
+    // Use products from challan as the primary source
     const productsWithDetails = [];
 
-    // First, get all products from the challan
+    // First, get all products from challan
     const challanProducts = challan.products || [];
 
-    // For each selection, get all products and match with challan products
-    for (const selection of selections) {
-      if (selection && selection.products && selection.products.length > 0) {
-        for (const selectionProduct of selection.products) {
-          // Check if this selection product is in the challan products
-          const matchingChallanProduct = challanProducts.find(challanProduct =>
+    // For each challan product, find the matching selection product
+    for (const challanProduct of challanProducts) {
+      let matchingSelectionProduct = null;
+      let matchingSelection = null;
+
+      // Find the selection that contains this product
+      for (const selection of selections) {
+        if (selection && selection.products && selection.products.length > 0) {
+          const foundProduct = selection.products.find(selectionProduct =>
             selectionProduct.product_variant_id.toString() === challanProduct.productVariantId.toString() ||
             selectionProduct._id.toString() === challanProduct.selectionProductId.toString()
           );
 
-          // Only include products that are actually in the challan
-          if (matchingChallanProduct) {
-            // Create product object prioritizing V2 challan data for metrics
-            const productWithDetails = {
-              _id: selectionProduct._id,
-              productVariantId: matchingChallanProduct.productVariantId || selectionProduct.product_variant_id,
-              selectionProductId: matchingChallanProduct.selectionProductId || selectionProduct._id,
-              selectionId: selection._id,
-
-              // Use metrics from challan (V2) if available, otherwise from selection (V1)
-              quantity: matchingChallanProduct.quantity ?? selectionProduct.quantity ?? 1,
-              unitPerPrice: matchingChallanProduct.unitPerPrice ?? (matchingChallanProduct.price) ?? selectionProduct.unitPerPrice ?? 0,
-              totalAmount: matchingChallanProduct.totalAmount ?? selectionProduct.totalAmount ?? 0,
-              unit: matchingChallanProduct.unit || selectionProduct.unit || 'Sq.Feet/Price',
-              boxPerPiece: matchingChallanProduct.boxPerPiece ?? selectionProduct.boxPerPiece ?? null,
-              totalBox: matchingChallanProduct.totalBox ?? selectionProduct.totalBox ?? null,
-              totalSquareFeet: matchingChallanProduct.totalSquareFeet ?? selectionProduct.totalSquareFeet ?? 0,
-
-              // Product details from selection product (still primary source for names)
-              productName: selectionProduct.product_name || matchingChallanProduct.productName || 'Unknown Product',
-              variantName: selectionProduct.variant_name || matchingChallanProduct.variantName || '',
-              seriesName: selectionProduct.series_name || matchingChallanProduct.seriesName || '',
-              designCode: selectionProduct.design_code || matchingChallanProduct.designCode || '',
-              seriesId: selectionProduct.series_id || matchingChallanProduct.seriesId || '',
-              variantId: selectionProduct.variant_id || matchingChallanProduct.variantId || '',
-
-              // Selection context
-              selectionName: selection.requirementType || 'N/A',
-              selectionStatus: selection.status || null,
-              selectionCreatedAt: selection.createdAt || null,
-
-              // Additional details
-              isProductDeleted: selectionProduct.isProductDeleted || matchingChallanProduct.isProductDeleted || false,
-            };
-
-            productsWithDetails.push(productWithDetails);
+          if (foundProduct) {
+            matchingSelectionProduct = foundProduct;
+            matchingSelection = selection;
+            break; // Found the match, exit the loop
           }
         }
+      }
+
+      // Only include if we found a matching selection product
+      if (matchingSelectionProduct && matchingSelection) {
+        // Create product object prioritizing V2 challan data for metrics
+        const productWithDetails = {
+          _id: matchingSelectionProduct._id,
+          productVariantId: challanProduct.productVariantId || matchingSelectionProduct.product_variant_id,
+          selectionProductId: challanProduct.selectionProductId || matchingSelectionProduct._id,
+          selectionId: matchingSelection._id,
+          selectionName: challanProduct.selectionName || matchingSelection.requirementType || 'N/A',
+
+          // Use metrics from challan (V2) - these are the stored values
+          quantity: challanProduct.quantity ?? matchingSelectionProduct.quantity ?? 1,
+          unitPerPrice: challanProduct.unitPerPrice ?? matchingSelectionProduct.unitPerPrice ?? 0,
+          totalAmount: challanProduct.totalAmount ?? matchingSelectionProduct.totalAmount ?? 0,
+          unit: challanProduct.unit || matchingSelectionProduct.unit || 'Sq.Feet/Price',
+          boxPerPiece: challanProduct.boxPerPiece ?? matchingSelectionProduct.boxPerPiece ?? null,
+          totalBox: challanProduct.totalBox ?? matchingSelectionProduct.totalBox ?? null,
+          totalSquareFeet: challanProduct.totalSquareFeet ?? matchingSelectionProduct.totalSquareFeet ?? 0,
+
+          // Product details from selection product (still primary source for names)
+          productName: matchingSelectionProduct.product_name || challanProduct.productName || 'Unknown Product',
+          variantName: matchingSelectionProduct.variant_name || challanProduct.variantName || '',
+          seriesName: matchingSelectionProduct.series_name || challanProduct.seriesName || '',
+          designCode: matchingSelectionProduct.design_code || challanProduct.designCode || '',
+          seriesId: matchingSelectionProduct.series_id || challanProduct.seriesId || '',
+          variantId: matchingSelectionProduct.variant_id || challanProduct.variantId || '',
+
+          // Selection context
+          selectionStatus: matchingSelection.status || null,
+          selectionCreatedAt: matchingSelection.createdAt || null,
+
+          // Additional details
+          isProductDeleted: matchingSelectionProduct.isProductDeleted || challanProduct.isProductDeleted || false,
+        };
+
+        productsWithDetails.push(productWithDetails);
       }
     }
 

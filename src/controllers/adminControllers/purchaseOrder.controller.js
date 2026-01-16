@@ -41,8 +41,6 @@ module.exports = {
         }
       }
 
-      // Check for duplicate products within the same order
-      // Allow same product if they have different selection IDs
       if (items && Array.isArray(items)) {
         const duplicateCheck = items.map((item, index) => ({
           index,
@@ -51,11 +49,13 @@ module.exports = {
         }));
 
         const duplicates = duplicateCheck.filter((item, index) => {
-          // Check for duplicates based on both productVariantId and selectionId
+          if (!item.productVariantId && !item.selectionId) return false;
+
           return duplicateCheck.findIndex(
-            checkItem => checkItem.productVariantId === item.productVariantId &&
-              checkItem.selectionId === item.selectionId &&
-              checkItem.index !== index
+            checkItem => (
+              (item.productVariantId && checkItem.productVariantId === item.productVariantId) ||
+              (item.selectionId && checkItem.selectionId === item.selectionId)
+            ) && checkItem.index !== index
           ) !== -1;
         });
 
@@ -76,7 +76,6 @@ module.exports = {
       session.startTransaction();
 
       try {
-        // Generate Order ID if not provided
         const finalOrderId = orderId || await purchaseOrderService.generatePurchaseOrderId(session);
 
         let totalAmount = 0;
@@ -127,9 +126,8 @@ module.exports = {
             try {
               const v1Product = await v1Service.getSeriesProduct(item.productVariantId.toString(), token);
               if (v1Product) {
-                // Merge V1 details but KEEP frontend provided IDs if valid, or fallback to V1
                 productDetails = {
-                  ...productDetails, // Keep existing frontend data (like manual overrides)
+                  ...productDetails, 
                   itemCode: productDetails.itemCode || v1Product.item_code,
                   itemName: productDetails.itemName || v1Product.product_name,
                   productName: productDetails.productName || v1Product.product_name,
@@ -146,7 +144,6 @@ module.exports = {
               }
             } catch (error) {
               console.warn(`Could not fetch product details from v1 for ${item.productVariantId}:`, error.message);
-              // Fallback to existing data is already handled by initial assignment
             }
           }
 
@@ -163,17 +160,16 @@ module.exports = {
             seriesName: productDetails.seriesName,
             designCode: productDetails.designCode,
             dimension: productDetails.dimension,
-            // Ensure IDs are persisted
             variantId: productDetails.variantId,
             seriesId: productDetails.seriesId,
             productId: productDetails.productId || item.productId,
-            quantity: (unit === 'Piece/Price' ? totalBox * boxPerPiece : (totalSquareFeet || quantity)),
-            mrp: mrp,
+            // quantity: (unit === 'Piece/Price' ? totalBox * boxPerPiece : (totalSquareFeet || quantity)),
+            // mrp: mrp,
             unitPerPrice: unitPerPrice,
             discount: discount,
             price: unitPerPrice - (discount / 100) * unitPerPrice,
             totalAmount: total,
-            totalSquareFeet: (unit === 'Piece/Price' ? (totalBox * boxPerPiece * (productDetails.sellSqFtPerPiece || 1)) : (totalSquareFeet || quantity)),
+            totalSquareFeet: totalSquareFeet || 0 ,
             totalBox: totalBox,
             boxPerPiece: boxPerPiece,
             unit: unit,
@@ -306,16 +302,13 @@ module.exports = {
   getPurchaseOrder: catchAsync(async (req, res) => {
     const { id } = req.params;
 
-    // Get purchase order with enriched data from database
     const purchaseOrder = await purchaseOrderService.get({ _id: id, deletedAt: null });
 
     if (!purchaseOrder) {
       throw new ApiError(httpStatus.NOT_FOUND, 'Purchase order not found');
     }
 
-    // Populate vendor details if the field exists
     if (purchaseOrder.vendor) {
-      // Populate vendor details from V1
       if (purchaseOrder.vendor) {
         try {
           const token = req.headers.authorization;
@@ -341,7 +334,7 @@ module.exports = {
       res.status(httpStatus.OK).send({
         success: true,
         message: 'Purchase order details fetched successfully',
-        data: purchaseOrder, // Return enriched data stored in database
+        data: purchaseOrder, 
       });
     }
   }
@@ -360,22 +353,19 @@ module.exports = {
       throw new ApiError(httpStatus.NOT_FOUND, 'Purchase order not found');
     }
 
-    // Validate vendor exists in v1 if provided
     if (vendor) {
       const vendorData = await v1Service.getVendor(vendor, token);
       if (!vendorData) {
         throw new ApiError(httpStatus.NOT_FOUND, 'Vendor not found (in V1)');
       }
-      // Store vendor details in purchase order for PWA display
       purchaseOrder.vendorDetails = vendorData;
     }
 
-    // Check for duplicate Order ID if provided and different from current
     if (orderId && orderId !== purchaseOrder.orderId) {
       const existingOrder = await purchaseOrderService.get({
         orderId,
         deletedAt: null,
-        _id: { $ne: id } // Exclude current order
+        _id: { $ne: id }
       });
 
       if (existingOrder) {
@@ -391,7 +381,6 @@ module.exports = {
       }
     }
 
-    // Check for duplicate products within the same order if items are provided
     if (items && Array.isArray(items)) {
       const duplicateCheck = items.map((item, index) => ({
         index,
@@ -400,10 +389,13 @@ module.exports = {
       }));
 
       const duplicates = duplicateCheck.filter((item, index) => {
+        if (!item.productVariantId && !item.selectionId) return false;
+
         return duplicateCheck.findIndex(
-          checkItem => checkItem.productVariantId === item.productVariantId &&
-            checkItem.selectionId === item.selectionId &&
-            checkItem.index !== index
+          checkItem => (
+            (item.productVariantId && checkItem.productVariantId === item.productVariantId) ||
+            (item.selectionId && checkItem.selectionId === item.selectionId)
+          ) && checkItem.index !== index
         ) !== -1;
       });
 
@@ -420,7 +412,6 @@ module.exports = {
       }
     }
 
-    // Update purchase order logic
     if (items && Array.isArray(items)) {
       let totalAmount = 0;
       let totalQuantity = 0;
@@ -428,15 +419,13 @@ module.exports = {
 
       for (const item of items) {
         const mrp = parseFloat(item.mrp) || 0;
-        const unitPerPrice = parseFloat(item.unitPerPrice) || mrp;
+        const unitPerPrice = parseFloat(item.unitPerPrice) ;
         const discount = parseFloat(item.discount) || 0;
-        const quantity = parseFloat(item.quantity) || 0;
         const totalBox = parseFloat(item.totalBox) || 0;
         const boxPerPiece = parseFloat(item.boxPerPiece) || 0;
         const totalSquareFeet = parseFloat(item.totalSquareFeet) || 0;
         const unit = item.unit || 'Sq.Feet/Price';
 
-        // Calculate total based on unit
         let itemTotal = 0;
         if (unit === 'Piece/Price') {
           itemTotal = totalBox * boxPerPiece * unitPerPrice;
@@ -450,7 +439,6 @@ module.exports = {
         totalAmount += total;
         totalQuantity += (unit === 'Piece/Price' ? totalBox * boxPerPiece : (totalSquareFeet || quantity));
 
-        // Store complete series details from frontend
         let productDetails = {
           itemCode: item.itemCode || '',
           itemName: item.itemName || '',
@@ -463,7 +451,6 @@ module.exports = {
           designCode: item.designCode || '',
         };
 
-        // If productVariantId provided, fetch additional details from v1
         if (item.productVariantId && token) {
           try {
             const v1Product = await v1Service.getSeriesProduct(item.productVariantId.toString(), token);
@@ -482,7 +469,6 @@ module.exports = {
                 purchaseSqFtPerPiece: v1Product.purchaseSqFtPerPiece || 0,
                 sellSqFtPerPiece: v1Product.sellSqFtPerPiece || 0,
                 piecesPerBox: v1Product.piecesPerBox || 0,
-                // Store complete v1 product data for PWA display
                 product_variant: v1Product,
                 series_product: v1Product.series_product,
                 series: v1Product.series,
@@ -512,19 +498,16 @@ module.exports = {
           seriesId: productDetails.seriesId,
           productId: productDetails.productId || item.productId,
           dimension: productDetails.dimension,
-          quantity: (unit === 'Piece/Price' ? totalBox * boxPerPiece : (totalSquareFeet || quantity)),
-          mrp: mrp,
           unitPerPrice: unitPerPrice,
           discount: discount,
           price: unitPerPrice - (discount / 100) * unitPerPrice,
           totalAmount: total,
-          totalSquareFeet: (unit === 'Piece/Price' ? (totalBox * boxPerPiece * (productDetails.sellSqFtPerPiece || 1)) : (totalSquareFeet || quantity)),
+          totalSquareFeet:totalSquareFeet,
           totalBox: totalBox,
           boxPerPiece: boxPerPiece,
           unit: unit,
           total: total,
           challanId: item.challanId && item.challanId.trim() !== '' ? item.challanId : undefined,
-          // Store complete v1 enriched data for PWA display
           product_variant: productDetails.product_variant,
           series_product: productDetails.series_product,
           series: productDetails.series,

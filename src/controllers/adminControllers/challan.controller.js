@@ -5,6 +5,7 @@ const { challanService } = require('../../services/commonServices');
 const { paginationQuery } = require('../../helper/mongoose.helper');
 const mongoose = require('mongoose');
 const v1Service = require('../../services/v1Service');
+const axios = require('axios');
 
 module.exports = {
 
@@ -13,23 +14,139 @@ module.exports = {
    */
   createChallan: catchAsync(async (req, res) => {
     try {
-      const { customerId, selectionIds, products, remarks, status } = req.body;
+      const { customerId, customerMode, newCustomerData, selectionIds, products, remarks, status, assignTo, newCustomerSelections } = req.body;
       const token = req.headers.authorization;
 
-      // Validate customer exists
-      const customer = await v1Service.getCustomer(customerId, token);
-      if (!customer) {
-        throw new ApiError(httpStatus.NOT_FOUND, 'Customer not found (in V1)');
+      // Validation: customerId is required for existing customer, optional for new customer
+      if (customerMode === "existing" && !customerId) {
+        throw new ApiError(httpStatus.BAD_REQUEST, 'Customer ID is required for existing customer');
+      }
+
+      if (customerMode === "new" && !newCustomerData) {
+        throw new ApiError(httpStatus.BAD_REQUEST, 'New customer data is required for new customer');
+      }
+
+      let finalCustomerId = customerId;
+
+      // Handle new customer creation
+      if (customerMode === "new" && newCustomerData) {
+        
+        // Create customer via V1 API
+        const customerResponse = await axios.post(`${process.env.V1_BASE_URL}/v1/mobile/staff/customer/create-customer`, newCustomerData, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token
+          }
+        });
+
+        if (customerResponse.status !== 200 && customerResponse.status !== 201) {
+          throw new ApiError(httpStatus.BAD_REQUEST, `Failed to create customer: ${customerResponse.data?.message || 'Unknown error'}`);
+        }
+
+        const customerRes = customerResponse.data;
+        if (customerRes?.data?._id) {
+          finalCustomerId = customerRes.data._id;
+        } else {
+          throw new ApiError(httpStatus.BAD_REQUEST, 'Failed to create customer: No customer ID returned');
+        }
+      } else {
+        if (!finalCustomerId) {
+          throw new ApiError(httpStatus.BAD_REQUEST, 'Failed to create customer: No customer ID returned');
+        }
+      }
+
+      let finalSelectionIds = [...selectionIds];
+      let selectionIdMap = {};
+      let selectionProductMap = {};
+
+      // Handle new customer selections creation
+      if (newCustomerSelections && newCustomerSelections.length > 0) {
+        const selectionPayload = {
+          customerId: finalCustomerId, // Use the final customer ID (newly created or existing)
+          selectionData: newCustomerSelections.map((s) => ({
+            requirementType: s.requirementType,
+            followUp: s.followUpDate,
+            productVariantId: products
+              .filter((p) => p.selectionId === s._id)
+              .map((p) => ({
+                p_id: p.productVariantId,
+                totalBox: p.totalBox || "",
+                boxPerPiece: p.boxPerPiece || "",
+                totalSquareFeet: Number(p.totalSquareFeet) || 0,
+                unitPerPrice: Number(p.unitPerPrice) || 0,
+                unit: p.unit,
+              })),
+          })),
+        };
+
+        const selectionResponse = await axios.post(`${process.env.V1_BASE_URL}/mobile/staff/selection/create`, selectionPayload, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token
+          }
+        });
+
+        if (selectionResponse.status !== 200 && selectionResponse.status !== 201) {
+          throw new ApiError(httpStatus.BAD_REQUEST, `Failed to create selections: ${selectionResponse.data?.message || 'Unknown error'}`);
+        }
+
+        const selRes = selectionResponse.data;
+
+        if (selRes?.data) {
+          const createdSelections = Array.isArray(selRes.data) ? selRes.data : [selRes.data];
+
+          createdSelections.forEach((createdSel, index) => {
+            const tempSel = newCustomerSelections[index];
+            if (tempSel) {
+              selectionIdMap[tempSel._id] = createdSel._id;
+              finalSelectionIds.push(createdSel._id);
+
+              if (createdSel.products) {
+                createdSel.products.forEach((createdProd) => {
+                  const vid = createdProd.p_id || createdProd.product_variant_id;
+                  if (vid) {
+                    selectionProductMap[`${tempSel._id}_${vid}`] = createdProd._id;
+                  }
+                });
+              }
+            }
+          });
+        }
+      }
+
+      // Handle customer assignment
+      if (assignTo && assignTo.length > 0) {
+        const assignPayload = {
+          customer_id: finalCustomerId, // Use the final customer ID (newly created or existing)
+          staff_id: assignTo,
+        };
+
+        // Assign customer via V1 API
+        const assignResponse = await axios.put(`${process.env.V1_BASE_URL}/mobile/staff/customer/assign-staff`, assignPayload, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token
+          }
+        });
+
+        if (assignResponse.status !== 200 && assignResponse.status !== 201) {
+          throw new ApiError(httpStatus.BAD_REQUEST, `Failed to assign customer: ${assignResponse.data?.message || 'Unknown error'}`);
+        }
+      }
+
+      // Validate we have selection IDs (after potential new selection creation)
+      if (finalSelectionIds.length === 0) {
+        throw new ApiError(httpStatus.BAD_REQUEST, 'No selections found for this challan');
       }
 
       // Fetch all selections to get product details for persistence
       const selectionMap = {};
-      for (const selectionId of selectionIds) {
+      for (const selectionId of finalSelectionIds) {
         const selection = await v1Service.getSelection(selectionId, token);
         if (!selection) {
           throw new ApiError(httpStatus.BAD_REQUEST, `Selection ${selectionId} not found`);
         }
-        if (selection.customerId.toString() !== customerId) {
+        if (selection.customerId.toString() !== finalCustomerId) {
           throw new ApiError(httpStatus.BAD_REQUEST, `Selection ${selectionId} does not belong to this customer`);
         }
         selectionMap[selectionId] = selection;
@@ -42,21 +159,24 @@ module.exports = {
       let totalBox = 0;
 
       const enrichedProducts = products.map(product => {
-        const selectionId = product.selectionId || selectionIds[0];
-        const selection = selectionMap[selectionId];
+        const isTempSelection = product.selectionId && typeof product.selectionId === "string" && product.selectionId.startsWith("temp-");
+        const realSelectionId = isTempSelection ? selectionIdMap[product.selectionId] : product.selectionId;
+        const realSelectionProductId = isTempSelection ? selectionProductMap[`${product.selectionId}_${product.productVariantId}`] : product.selectionProductId;
+
+        const selection = selectionMap[realSelectionId || finalSelectionIds[0]];
 
         let metadata = {};
         if (selection) {
           const matchingProduct = selection.products?.find(p =>
             (p.product_variant_id && p.product_variant_id.toString() === product.productVariantId?.toString()) ||
-            (p._id && p._id.toString() === product.selectionProductId?.toString())
+            (p._id && p._id.toString() === realSelectionProductId?.toString())
           );
 
           if (matchingProduct) {
             metadata = {
               productName: product.productName || matchingProduct.product_name || '',
               seriesName: product.seriesName || (Array.isArray(matchingProduct.series_name) ? matchingProduct.series_name.join(', ') : (matchingProduct.series_name || '')),
-              dimension: MatchingProduct.dimension || '',
+              dimension: matchingProduct.dimension || '',
               designCode: product.designCode || matchingProduct.design_code || '',
               variantId: product.variantId || matchingProduct.variant_id?.toString() || '',
               seriesId: product.seriesId || matchingProduct.series_id?.toString() || '',
@@ -73,7 +193,8 @@ module.exports = {
         return {
           ...product,
           ...metadata,
-          selectionId
+          selectionId: realSelectionId,
+          selectionProductId: realSelectionProductId
         };
       });
 
@@ -99,8 +220,8 @@ module.exports = {
 
         const challan = await challanService.create({
           challanNumber,
-          customerId,
-          selectionIds,
+          customerId: finalCustomerId, // Use the final customer ID (newly created or existing)
+          selectionIds: finalSelectionIds,
           products: enrichedProducts,
           totalAmount,
           totalQuantity,
