@@ -211,7 +211,8 @@ module.exports = {
           ...product,
           // ...metadata,
           selectionId: realSelectionId,
-          selectionProductId: realSelectionProductId
+          selectionProductId: realSelectionProductId,
+          selectionName: selection?.requirementType || ''
         };
 
         return finalProduct;
