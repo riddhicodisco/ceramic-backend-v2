@@ -30,7 +30,7 @@ module.exports = {
 
       // Handle new customer creation
       if (customerMode === "new" && newCustomerData) {
-        
+
         // Create customer via V1 API
         const customerResponse = await axios.post(`${process.env.V1_BASE_URL}/v1/mobile/staff/customer/create-customer`, newCustomerData, {
           headers: {
@@ -625,7 +625,10 @@ module.exports = {
         $group: {
           _id: '$customerId',
           challanCount: { $sum: 1 },
-          lastChallanDate: { $max: '$createdAt' }
+          lastChallanDate: { $max: '$createdAt' },
+          totalAmount: { $sum: '$totalAmount' }, // Get sum of totalAmount
+          totalProducts: { $sum: { $size: { $ifNull: ['$products', []] } } },
+          totalSelection: { $sum: { $size: { $ifNull: ['$selectionIds', []] } } }
         }
       },
       { $sort: { lastChallanDate: -1 } }
@@ -663,9 +666,13 @@ module.exports = {
           customersWithDetails.push({
             ...customer,
             challanCount: item.challanCount,
+            totalAmount: item.totalAmount, // Include totalAmount in response
+            totalProducts: item.totalProducts, // Overwrite with challan totals
+            totalSelection: item.totalSelection, // Overwrite with challan totals
             lastChallanDate: item.lastChallanDate
           });
         }
+        console.log(customersWithDetails, 'customersWithDetails')
       } catch (err) {
         console.warn(`Failed to fetch customer ${item._id} from V1`);
       }
