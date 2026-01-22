@@ -22,6 +22,13 @@ router.get(
 );
 
 router.get(
+  '/recent',
+  authorizeV3(ROLES.admin, ROLES.accountant),
+  validate(challanValidation.getRecentChallans),
+  challanController.getRecentChallans
+);
+
+router.get(
   '/get/:id',
   authorizeV3(ROLES.admin, ROLES.accountant),
   validate(challanValidation.getChallan),

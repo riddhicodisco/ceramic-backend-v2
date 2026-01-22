@@ -30,7 +30,7 @@ module.exports = {
 
       // Handle new customer creation
       if (customerMode === "new" && newCustomerData) {
-        
+
         try {
           // Create customer via V1 API
           const customerResponse = await axios.post(`${process.env.V1_BASE_URL}/v1/mobile/staff/customer/create-customer`, newCustomerData, {
@@ -68,12 +68,12 @@ module.exports = {
 
       // Handle new customer selections creation
       if (newCustomerSelections && newCustomerSelections.length > 0) {
-       
-        
+
+
         const selectionPayload = {
-          customerId: finalCustomerId, 
+          customerId: finalCustomerId,
           selectionData: newCustomerSelections.map((s, index) => {
-            
+
             return {
               requirementType: s.requirementType,
               followUp: s.followUpDate,
@@ -166,11 +166,11 @@ module.exports = {
           // Use first created selection ID for all new products
           if (createdSelections.length > 0) {
             realSelectionId = createdSelections[0]._id;
-            
+
             // Find the matching product in created selection to get new product ID
             const createdSelection = createdSelections[0];
             if (createdSelection?.products) {
-              const matchingCreatedProduct = createdSelection.products.find(cp => 
+              const matchingCreatedProduct = createdSelection.products.find(cp =>
                 cp.p_id === product.productVariantId || cp.product_variant_id === product.productVariantId
               );
               if (matchingCreatedProduct) {
@@ -280,34 +280,56 @@ module.exports = {
    * Get all challans with pagination
    */
   getAllChallans: catchAsync(async (req, res) => {
-    const { page = 1, limit = 10, search, status, customerId } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      status,
+      customerId,
+      startDate,
+      endDate,
+      minAmount,
+      maxAmount
+    } = req.query;
 
-    const filter = {
-      deletedAt: null,
-    };
-
-    // If user is accountant, only show last 7 days records
-    if (req.user.role.role === 'Accountant') {
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      sevenDaysAgo.setHours(0, 0, 0, 0); // Start of day
-      filter.createdAt = { $gte: sevenDaysAgo };
-    }
+    const matchStage = { deletedAt: null };
 
     if (search) {
-      filter.challanNumber = { $regex: search, $options: 'i' };
+      matchStage.challanNumber = { $regex: search, $options: 'i' };
     }
 
     if (status && status !== 'All') {
-      filter.status = status;
+      matchStage.status = status;
     }
 
     if (customerId) {
-      filter.customerId = customerId;
+      matchStage.customerId = new mongoose.Types.ObjectId(customerId);
+    }
+
+    if (startDate || endDate) {
+      matchStage.createdAt = {};
+      if (startDate) {
+        matchStage.createdAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        matchStage.createdAt.$lte = end;
+      }
+    }
+
+    if (minAmount !== undefined || maxAmount !== undefined) {
+      matchStage.totalAmount = {};
+      if (minAmount !== undefined) {
+        matchStage.totalAmount.$gte = Number(minAmount);
+      }
+      if (maxAmount !== undefined) {
+        matchStage.totalAmount.$lte = Number(maxAmount);
+      }
     }
 
     const pipeline = [
-      { $match: filter },
+      { $match: matchStage },
 
       // Unwind products for processing (only the ones saved with challan)
       { $unwind: { path: '$products', preserveNullAndEmptyArrays: true } },
@@ -416,6 +438,144 @@ module.exports = {
     res.status(httpStatus.OK).send({
       success: true,
       message: 'Challans fetched successfully',
+      data: challans[0],
+    });
+  }),
+
+  /**
+   * Get recent challans (last 7 days)
+   */
+  getRecentChallans: catchAsync(async (req, res) => {
+    const { page = 1, limit = 10, search, status } = req.query;
+
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
+    const matchStage = {
+      deletedAt: null,
+      createdAt: { $gte: sevenDaysAgo }
+    };
+
+    if (search) {
+      matchStage.challanNumber = { $regex: search, $options: 'i' };
+    }
+
+    if (status && status !== 'All') {
+      matchStage.status = status;
+    }
+
+    const pipeline = [
+      {
+        $match: matchStage
+      },
+
+      // Unwind products for processing
+      { $unwind: { path: '$products', preserveNullAndEmptyArrays: true } },
+
+      // Lookup product variant
+      {
+        $lookup: {
+          from: 'product_variants',
+          localField: 'products.productVariantId',
+          foreignField: '_id',
+          as: 'products.productVariant',
+        },
+      },
+      { $unwind: { path: '$products.productVariant', preserveNullAndEmptyArrays: true } },
+
+      // Lookup series product
+      {
+        $lookup: {
+          from: 'series_products',
+          localField: 'products.productVariant.series_product',
+          foreignField: '_id',
+          as: 'products.seriesProduct',
+        },
+      },
+      { $unwind: { path: '$products.seriesProduct', preserveNullAndEmptyArrays: true } },
+
+      // Lookup series
+      {
+        $lookup: {
+          from: 'series',
+          localField: 'products.seriesProduct.series',
+          foreignField: '_id',
+          as: 'products.series',
+        },
+      },
+      { $unwind: { path: '$products.series', preserveNullAndEmptyArrays: true } },
+
+      // Add frontend-friendly fields
+      {
+        $addFields: {
+          'products.productName': { $ifNull: ['$products.productName', ''] },
+          'products.seriesName': { $ifNull: ['$products.seriesName', ''] },
+          'products.dimension': { $ifNull: ['$products.dimension', ''] },
+          'products.designCode': { $ifNull: ['$products.designCode', ''] },
+          'products.totalBox': { $ifNull: ['$products.totalBox', 0] },
+          'products.totalSquareFeet': { $ifNull: ['$products.totalSquareFeet', 0] },
+          'products.boxPerPiece': { $ifNull: ['$products.boxPerPiece', 0] },
+          'products.unitPerPrice': { $ifNull: ['$products.unitPerPrice', 0] },
+          'products.unit': { $ifNull: ['$products.unit', 'Sq.Feet/Price'] },
+          'products.totalAmount': { $ifNull: ['$products.totalAmount', 0] },
+          'products.selectionId': { $ifNull: ['$products.selectionId', ''] },
+          'products.selectionName': { $ifNull: ['$products.selectionName', 'N/A'] },
+          'products.selectionProductId': { $ifNull: ['$products.selectionProductId', ''] },
+          'products.variantId': { $ifNull: ['$products.variantId', ''] },
+          'products.variantName': { $ifNull: ['$products.variantName', ''] },
+          'products.seriesId': { $ifNull: ['$products.seriesId', ''] },
+        }
+      },
+
+      // Group back to restore original structure
+      {
+        $group: {
+          _id: '$_id',
+          challanNumber: { $first: '$challanNumber' },
+          customerId: { $first: '$customerId' },
+          selectionIds: { $first: '$selectionIds' },
+          products: { $push: '$products' },
+          totalAmount: { $first: '$totalAmount' },
+          totalQuantity: { $first: '$totalQuantity' },
+          status: { $first: '$status' },
+          remarks: { $first: '$remarks' },
+          createdBy: { $first: '$createdBy' },
+          createdAt: { $first: '$createdAt' },
+          updatedAt: { $first: '$updatedAt' },
+        }
+      },
+
+      // Sort by creation date (newest first)
+      { $sort: { createdAt: -1 } },
+
+      ...paginationQuery({ page, limit }),
+    ];
+
+    const challans = await challanService.aggregate(pipeline);
+
+    // Populate customer details from V1
+    if (challans[0] && challans[0].results && challans[0].results.length > 0) {
+      const resultsWithCustomer = await Promise.all(challans[0].results.map(async (challan) => {
+        let customer = null;
+        if (challan.customerId) {
+          try {
+            customer = await v1Service.getCustomer(challan.customerId.toString(), req.headers.authorization);
+          } catch (error) {
+            console.warn(`Could not fetch customer ${challan.customerId} from v1:`, error.message);
+          }
+        }
+        return {
+          ...challan,
+          customer: customer
+        };
+      }));
+      challans[0].results = resultsWithCustomer;
+    }
+
+    res.status(httpStatus.OK).send({
+      success: true,
+      message: 'Recent challans fetched successfully',
       data: challans[0],
     });
   }),
@@ -642,64 +802,4 @@ module.exports = {
       }
     });
   }),
-
-  /**
-   * Get products from selected selections
-   */
-  // getSelectionProducts: catchAsync(async (req, res) => {
-  //   const { selectionIds } = req.query;
-
-  //   if (!selectionIds) {
-  //     throw new ApiError(httpStatus.BAD_REQUEST, 'Selection IDs are required');
-  //   }
-
-  //   const ids = selectionIds.split(',').map(id => new mongoose.Types.ObjectId(id.trim()));
-
-  //   const pipeline = [
-  //     { $match: { selectionId: { $in: ids }, deletedAt: null } },
-  //     {
-  //       $lookup: {
-  //         from: 'product_variants',
-  //         localField: 'productVariantId',
-  //         foreignField: '_id',
-  //         as: 'productVariant',
-  //       },
-  //     },
-  //     { $unwind: { path: '$productVariant', preserveNullAndEmptyArrays: true } },
-  //     {
-  //       $lookup: {
-  //         from: 'series_products',
-  //         localField: 'productVariant.series_product',
-  //         foreignField: '_id',
-  //         as: 'seriesProduct',
-  //       },
-  //     },
-  //     { $unwind: { path: '$seriesProduct', preserveNullAndEmptyArrays: true } },
-  //     {
-  //       $lookup: {
-  //         from: 'series',
-  //         localField: 'seriesProduct.series',
-  //         foreignField: '_id',
-  //         as: 'series',
-  //       },
-  //     },
-  //     { $unwind: { path: '$series', preserveNullAndEmptyArrays: true } },
-  //     {
-  //       $addFields: {
-  //         'seriesProduct.name': '$seriesProduct.product_name',
-  //         'series.name': '$series.series_name',
-  //         'productVariant.dimension': '$series.dimension'
-  //       }
-  //     },
-
-  //   ];
-
-  //   const products = await selectionProductService.aggregate(pipeline);
-
-  //   res.status(httpStatus.OK).send({
-  //     success: true,
-  //     message: 'Selection products fetched successfully',
-  //     data: products,
-  //   });
-  // }),
 };

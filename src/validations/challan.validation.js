@@ -96,6 +96,19 @@ module.exports = {
       status: Joi.string().optional().allow('').valid('Pending', 'Running', 'Completed', 'Delivered', 'All'),
       customerId: Joi.string().custom(objectId).optional(),
       selectionIds: Joi.string().optional().allow(''),
+      startDate: Joi.string().optional().allow(''),
+      endDate: Joi.string().optional().allow(''),
+      minAmount: Joi.number().optional(),
+      maxAmount: Joi.number().optional(),
+    }),
+  },
+
+  getRecentChallans: {
+    query: Joi.object().keys({
+      page: Joi.number().integer().min(1).default(1),
+      limit: Joi.number().integer().min(1).max(100).default(10),
+      search: Joi.string().optional().allow(''),
+      status: Joi.string().optional().allow('').valid('Pending', 'Running', 'Completed', 'Delivered', 'All'),
     }),
   },
 
