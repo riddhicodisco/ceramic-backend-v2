@@ -3,4 +3,6 @@ module.exports = {
   incomeExpenseController: require('./incomeExpense.controller'),
   purchaseOrderController: require('./purchaseOrder.controller'),
   vendorController: require('./vendor.controller'),
+  paymentController: require('./payment.controller'),
+  discountController: require('./discount.controller'),
 };
