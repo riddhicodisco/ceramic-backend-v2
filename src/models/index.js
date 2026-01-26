@@ -6,3 +6,4 @@ module.exports.Challan = require('./challan.model');
 module.exports.ChallanCounter = require('./challanCounter.model');
 module.exports.PurchaseOrder = require('./purchaseOrder.model');
 module.exports.Payment = require('./payment.model');
+module.exports.VendorPayment = require('./vendorPayment.model');

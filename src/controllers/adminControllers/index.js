@@ -4,5 +4,6 @@ module.exports = {
   purchaseOrderController: require('./purchaseOrder.controller'),
   vendorController: require('./vendor.controller'),
   paymentController: require('./payment.controller'),
+  vendorPaymentController: require('./vendorPayment.controller'),
   discountController: require('./discount.controller'),
 };
