@@ -14,7 +14,7 @@ module.exports = {
    */
   createChallan: catchAsync(async (req, res) => {
     try {
-      const { customerId, customerMode, newCustomerData, selectionIds, products, remarks, status, assignTo, newCustomerSelections } = req.body;
+      const { customerId, customerMode, newCustomerData, selectionIds, products, remarks, status, assignTo, newCustomerSelections, transporterId, transporterName, transporterAmount } = req.body;
       const token = req.headers.authorization;
 
       // Validation: customerId is required for existing customer, optional for new customer
@@ -248,6 +248,9 @@ module.exports = {
           totalBox,
           status: status || 'Pending',
           remarks,
+          transporterId: transporterId || null,
+          transporterName: transporterName || null,
+          transporterAmount: transporterAmount || 0,
           createdBy: req.user._id,
         }, { session });
 
@@ -258,6 +261,22 @@ module.exports = {
           await v1Service.updateMultipleProductChallanFlags(enrichedProducts, true, token, challan._id, challan.challanNumber, 'Created');
         } catch (v1Error) {
           console.warn('Could not update product flags in v1:', v1Error.message);
+        }
+
+        // Create transporter history in v1 if transporter is provided
+        if (transporterId && transporterAmount && transporterAmount > 0) {
+          try {
+            await v1Service.createTransporterHistory({
+              transporterId: transporterId,
+              challanId: challan._id.toString(),
+              challanNumber: challan.challanNumber,
+              amount: transporterAmount,
+              date: new Date()
+            }, token);
+          } catch (historyError) {
+            console.warn('Could not create transporter history in v1:', historyError.message);
+            // Don't fail the challan creation if history creation fails
+          }
         }
 
         res.status(httpStatus.CREATED).send({

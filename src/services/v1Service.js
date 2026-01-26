@@ -394,6 +394,33 @@ console.log(data ,'data-----------------')
             throw new Error(`Failed to get user from v1: ${error.message}`);
         }
     }
+
+    /**
+     * Create transporter history in v1
+     * @param {Object} historyData - History data with transporterId, challanId, challanNumber, amount, date
+     * @param {string} [token] - Authorization token
+     * @returns {Promise} - Fetch response
+     */
+    async createTransporterHistory(historyData, token) {
+        try {
+            const headers = {
+                'Content-Type': 'application/json',
+            };
+            if (token) headers.Authorization = token;
+
+            const response = await axios.post(`${this.baseURL}/v1/admin/transporter-history/create`, historyData, { headers });
+            const data = response.data;
+
+            if (response.status !== 200 && response.status !== 201) {
+                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            }
+
+            return data?.data;
+        } catch (error) {
+            console.error('Error creating transporter history in v1:', error.message);
+            throw new Error(`Failed to create transporter history in v1: ${error.message}`);
+        }
+    }
 }
 
 module.exports = new V1Service();

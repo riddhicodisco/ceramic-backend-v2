@@ -171,6 +171,18 @@ const challanSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    transporterId: {
+      type: String,
+      trim: true,
+    },
+    transporterName: {
+      type: String,
+      trim: true,
+    },
+    transporterAmount: {
+      type: Number,
+      default: 0,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'users',
