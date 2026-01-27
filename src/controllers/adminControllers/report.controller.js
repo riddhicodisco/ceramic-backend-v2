@@ -4,7 +4,9 @@ const PurchaseOrder = require('../../models/purchaseOrder.model');
 const Challan = require('../../models/challan.model');
 const Payment = require('../../models/payment.model');
 const Expense = require('../../models/expense.model');
+const VendorPayment = require('../../models/vendorPayment.model');
 const ApiError = require('../../utils/apiError');
+const v1Service = require('../../services/v1Service');
 
 
 /**
@@ -290,7 +292,295 @@ const getProfitLossSummary = catchAsync(async (req, res) => {
 });
 
 
+/**
+ * Get balance sheet
+ * @route GET /v1/admin/reports/balance-sheet
+ * @access Private (Admin, Accountant)
+ */
+const getBalanceSheet = catchAsync(async (req, res) => {
+  const { startDate, endDate } = req.query;
+  const token = req.headers.authorization;
+
+  // Build date filters
+  const challanDateFilter = {};
+  const purchaseOrderDateFilter = {};
+  const customerPaymentDateFilter = {};
+  const vendorPaymentDateFilter = {};
+
+  if (startDate || endDate) {
+    if (startDate) {
+      challanDateFilter.createdAt = { $gte: new Date(startDate) };
+      purchaseOrderDateFilter.createdAt = { $gte: new Date(startDate) };
+      customerPaymentDateFilter.date = { $gte: new Date(startDate) };
+      vendorPaymentDateFilter.date = { $gte: new Date(startDate) };
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      challanDateFilter.createdAt = { ...challanDateFilter.createdAt, $lte: end };
+      purchaseOrderDateFilter.createdAt = { ...purchaseOrderDateFilter.createdAt, $lte: end };
+      customerPaymentDateFilter.date = { ...customerPaymentDateFilter.date, $lte: end };
+      vendorPaymentDateFilter.date = { ...vendorPaymentDateFilter.date, $lte: end };
+    }
+  }
+
+  // 1. Get Customer Balance Data
+  const customerChallansAgg = await Challan.aggregate([
+    {
+      $match: {
+        deletedAt: null,
+        ...challanDateFilter,
+      },
+    },
+    {
+      $group: {
+        _id: '$customerId',
+        totalInvoices: { $sum: '$totalAmount' },
+      },
+    },
+  ]);
+
+  const customerPaymentsAgg = await Payment.aggregate([
+    {
+      $match: {
+        deletedAt: null,
+        ...customerPaymentDateFilter,
+      },
+    },
+    {
+      $group: {
+        _id: '$customerId',
+        totalPayments: {
+          $sum: {
+            $cond: [{ $in: ['$category', ['Payment', 'Return']] }, '$amount', 0],
+          },
+        },
+        totalDiscounts: {
+          $sum: {
+            $add: [
+              { $cond: [{ $eq: ['$category', 'Credit Note'] }, '$amount', 0] },
+              { $cond: [{ $eq: ['$relatedPaymentId', null] }, '$discountGiven', 0] },
+            ],
+          },
+        },
+      },
+    },
+  ]);
+
+  // Combine customer data
+  const customerMap = new Map();
+  
+  customerChallansAgg.forEach((item) => {
+    if (item._id) {
+      customerMap.set(item._id.toString(), {
+        customerId: item._id.toString(),
+        totalInvoices: item.totalInvoices || 0,
+        totalPayments: 0,
+        totalDiscounts: 0,
+      });
+    }
+  });
+
+  customerPaymentsAgg.forEach((item) => {
+    if (item._id) {
+      const existing = customerMap.get(item._id.toString());
+      if (existing) {
+        existing.totalPayments = item.totalPayments || 0;
+        existing.totalDiscounts = item.totalDiscounts || 0;
+      } else {
+        customerMap.set(item._id.toString(), {
+          customerId: item._id.toString(),
+          totalInvoices: 0,
+          totalPayments: item.totalPayments || 0,
+          totalDiscounts: item.totalDiscounts || 0,
+        });
+      }
+    }
+  });
+
+  // Calculate balances and fetch customer details
+  const customerCreditors = [];
+  const customerDebtors = [];
+
+  await Promise.all(
+    Array.from(customerMap.values()).map(async (customerData) => {
+      const remainingBalance = customerData.totalInvoices - (customerData.totalPayments + customerData.totalDiscounts);
+      
+      let customerDetails = null;
+      try {
+        customerDetails = await v1Service.getCustomer(customerData.customerId, token);
+      } catch (error) {
+        console.warn(`Failed to fetch customer ${customerData.customerId} from V1:`, error.message);
+      }
+
+      const customerEntry = {
+        customerId: customerData.customerId,
+        customerName: customerDetails ? `${customerDetails.first_name || ''} ${customerDetails.last_name || ''}`.trim() : 'Unknown',
+        customerPhone: customerDetails?.phone || '',
+        totalInvoices: customerData.totalInvoices,
+        totalPayments: customerData.totalPayments,
+        totalDiscounts: customerData.totalDiscounts,
+        remainingBalance,
+      };
+
+      if (remainingBalance > 0) {
+        customerCreditors.push(customerEntry);
+      } else if (remainingBalance < 0) {
+        customerDebtors.push(customerEntry);
+      }
+    })
+  );
+
+  // 2. Get Vendor Balance Data
+  const vendorPurchaseOrdersAgg = await PurchaseOrder.aggregate([
+    {
+      $match: {
+        deletedAt: null,
+        ...purchaseOrderDateFilter,
+      },
+    },
+    {
+      $group: {
+        _id: '$vendor',
+        totalPurchaseOrders: { $sum: '$totalAmount' },
+      },
+    },
+  ]);
+
+  const vendorPaymentsAgg = await VendorPayment.aggregate([
+    {
+      $match: {
+        deletedAt: null,
+        ...vendorPaymentDateFilter,
+      },
+    },
+    {
+      $group: {
+        _id: '$vendorId',
+        totalCredit: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ['$transactionType', 'Credit'] },
+                  { $ne: ['$category', 'Credit Note'] },
+                ],
+              },
+              '$payableAmount',
+              0,
+            ],
+          },
+        },
+        totalDebit: {
+          $sum: {
+            $cond: [{ $eq: ['$transactionType', 'Debit'] }, '$payableAmount', 0],
+          },
+        },
+        totalDiscounts: {
+          $sum: {
+            $add: [
+              { $cond: [{ $eq: ['$category', 'Credit Note'] }, '$payableAmount', 0] },
+              { $cond: [{ $eq: ['$relatedPaymentId', null] }, '$discountGiven', 0] },
+            ],
+          },
+        },
+      },
+    },
+  ]);
+
+  // Combine vendor data
+  const vendorMap = new Map();
+
+  vendorPurchaseOrdersAgg.forEach((item) => {
+    if (item._id) {
+      vendorMap.set(item._id.toString(), {
+        vendorId: item._id.toString(),
+        totalPurchaseOrders: item.totalPurchaseOrders || 0,
+        totalPayments: 0,
+        totalDiscounts: 0,
+      });
+    }
+  });
+
+  vendorPaymentsAgg.forEach((item) => {
+    if (item._id) {
+      const existing = vendorMap.get(item._id.toString());
+      // Match the logic from vendorPayment.service.js: totalPayments = totalCredit - totalDebit
+      const totalPayments = (item.totalCredit || 0) - (item.totalDebit || 0);
+      if (existing) {
+        existing.totalPayments = totalPayments;
+        existing.totalDiscounts = item.totalDiscounts || 0;
+      } else {
+        vendorMap.set(item._id.toString(), {
+          vendorId: item._id.toString(),
+          totalPurchaseOrders: 0,
+          totalPayments: totalPayments,
+          totalDiscounts: item.totalDiscounts || 0,
+        });
+      }
+    }
+  });
+
+  // Calculate balances and fetch vendor details
+  const vendorCreditors = [];
+  const vendorDebtors = [];
+
+  await Promise.all(
+    Array.from(vendorMap.values()).map(async (vendorData) => {
+      const remainingBalance = vendorData.totalPurchaseOrders - (vendorData.totalPayments + vendorData.totalDiscounts);
+      
+      let vendorDetails = null;
+      try {
+        vendorDetails = await v1Service.getVendor(vendorData.vendorId, token);
+      } catch (error) {
+        console.warn(`Failed to fetch vendor ${vendorData.vendorId} from V1:`, error.message);
+      }
+
+      const vendorEntry = {
+        vendorId: vendorData.vendorId,
+        vendorName: vendorDetails?.vendorName || 'Unknown',
+        vendorPhone: vendorDetails?.phone || '',
+        totalPurchaseOrders: vendorData.totalPurchaseOrders,
+        totalPayments: vendorData.totalPayments,
+        totalDiscounts: vendorData.totalDiscounts,
+        remainingBalance,
+      };
+
+      if (remainingBalance > 0) {
+        vendorCreditors.push(vendorEntry);
+      } else if (remainingBalance < 0) {
+        vendorDebtors.push(vendorEntry);
+      }
+    })
+  );
+
+  // Calculate summary totals
+  const summary = {
+    vendorCreditorsTotal: vendorCreditors.reduce((sum, v) => sum + v.remainingBalance, 0),
+    vendorDebtorsTotal: Math.abs(vendorDebtors.reduce((sum, v) => sum + v.remainingBalance, 0)),
+    customerCreditorsTotal: customerCreditors.reduce((sum, c) => sum + c.remainingBalance, 0),
+    customerDebtorsTotal: Math.abs(customerDebtors.reduce((sum, c) => sum + c.remainingBalance, 0)),
+  };
+
+  res.status(httpStatus.OK).send({
+    success: true,
+    message: 'Balance sheet fetched successfully',
+    data: {
+      dateRange: {
+        startDate: startDate || null,
+        endDate: endDate || null,
+      },
+      vendorCreditors: vendorCreditors.sort((a, b) => b.remainingBalance - a.remainingBalance),
+      vendorDebtors: vendorDebtors.sort((a, b) => a.remainingBalance - b.remainingBalance),
+      customerCreditors: customerCreditors.sort((a, b) => b.remainingBalance - a.remainingBalance),
+      customerDebtors: customerDebtors.sort((a, b) => a.remainingBalance - b.remainingBalance),
+      summary,
+    },
+  });
+});
+
 module.exports = {
   getMonthlyPurchaseSale,
   getProfitLossSummary,
+  getBalanceSheet,
 };
