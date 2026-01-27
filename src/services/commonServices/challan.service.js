@@ -67,7 +67,7 @@ exports.getChallanWithProducts = async (identifier, token) => {
   const isObjectId = mongoose.Types.ObjectId.isValid(identifier);
   const filter = isObjectId ? { _id: new mongoose.Types.ObjectId(identifier) } : { challanNumber: identifier };
 
-  // Fetch the challan from v2 database (contains only IDs and metadata)
+  // Fetch the challan from v2 database (contains all items and metadata)
   const challan = await Challan.findOne({ ...filter, deletedAt: null });
 
   if (!challan) {
@@ -75,7 +75,7 @@ exports.getChallanWithProducts = async (identifier, token) => {
   }
 
   try {
-    // Fetch customer details from v1
+    // Fetch customer details from v1 (still needed for customer metadata)
     let customer = null;
     if (challan.customerId) {
       try {
@@ -85,85 +85,63 @@ exports.getChallanWithProducts = async (identifier, token) => {
       }
     }
 
-    // Fetch all selections from v1
-    const selections = [];
-    if (challan.selectionIds && challan.selectionIds.length > 0) {
+    // Use products stored in v2 directly as the source of truth
+    let products = (challan.products || []).map(p => ({
+      ...p.toObject(),
+      selectionName: p.selectionName || 'N/A',
+      productName: p.productName || 'Unknown Product',
+      variantName: p.variantName || '',
+      seriesName: p.seriesName || '',
+      designCode: p.designCode || '',
+      dimension: p.dimension || '',
+      quantity: p.quantity || 1,
+      unitPerPrice: p.unitPerPrice || 0,
+      totalAmount: p.totalAmount || 0,
+      unit: p.unit || 'Sq.Feet/Price',
+      totalSquareFeet: p.totalSquareFeet || 0,
+    }));
+
+    // BACKWARD COMPATIBILITY FALLBACK:
+    // If some metadata is missing (like dimension or productName), fetch from v1 selections once
+    const isMetadataMissing = products.some(p => !p.dimension || !p.productName || p.productName === 'Unknown Product');
+
+    if (isMetadataMissing && challan.selectionIds && challan.selectionIds.length > 0) {
+      console.log(`Metadata missing for challan ${challan.challanNumber}, falling back to v1 selections...`);
+      const selections = [];
       for (const selectionId of challan.selectionIds) {
         try {
           const selection = await v1Service.getSelection(selectionId.toString(), token);
-          if (selection) {
-            selections.push(selection);
-          }
+          if (selection) selections.push(selection);
         } catch (error) {
-          console.warn(`Could not fetch selection ${selectionId} from v1:`, error.message);
+          console.warn(`Could not fetch selection ${selectionId} for fallback:`, error.message);
         }
       }
-    }
 
-    // Use products from challan as the primary source
-    const productsWithDetails = [];
-
-    // First, get all products from challan
-    const challanProducts = challan.products || [];
-
-    // For each challan product, find the matching selection product
-    for (const challanProduct of challanProducts) {
-      let matchingSelectionProduct = null;
-      let matchingSelection = null;
-
-      // Find the selection that contains this product
-      for (const selection of selections) {
-        if (selection && selection.products && selection.products.length > 0) {
-          const foundProduct = selection.products.find(selectionProduct =>
-            selectionProduct.product_variant_id.toString() === challanProduct.productVariantId.toString() ||
-            selectionProduct._id.toString() === challanProduct.selectionProductId.toString()
+      // Merge v1 metadata into products
+      products = products.map(p => {
+        let matchingV1Product = null;
+        for (const sel of selections) {
+          matchingV1Product = (sel.products || []).find(v1p =>
+            (v1p.product_variant_id && v1p.product_variant_id.toString() === p.productVariantId?.toString()) ||
+            (v1p._id && v1p._id.toString() === p.selectionProductId?.toString())
           );
-
-          if (foundProduct) {
-            matchingSelectionProduct = foundProduct;
-            matchingSelection = selection;
-            break; // Found the match, exit the loop
-          }
+          if (matchingV1Product) break;
         }
-      }
 
-      // Only include if we found a matching selection product
-      if (matchingSelectionProduct && matchingSelection) {
-        // Create product object prioritizing V2 challan data for metrics
-        const productWithDetails = {
-          _id: matchingSelectionProduct._id,
-          productVariantId: challanProduct.productVariantId || matchingSelectionProduct.product_variant_id,
-          selectionProductId: challanProduct.selectionProductId || matchingSelectionProduct._id,
-          selectionId: matchingSelection._id,
-          selectionName: challanProduct.selectionName || matchingSelection.requirementType || 'N/A',
-
-          // Use metrics from challan (V2) - these are the stored values
-          quantity: challanProduct.quantity ?? matchingSelectionProduct.quantity ?? 1,
-          unitPerPrice: challanProduct.unitPerPrice ?? matchingSelectionProduct.unitPerPrice ?? 0,
-          totalAmount: challanProduct.totalAmount ?? matchingSelectionProduct.totalAmount ?? 0,
-          unit: challanProduct.unit || matchingSelectionProduct.unit || 'Sq.Feet/Price',
-          boxPerPiece: challanProduct.boxPerPiece ?? matchingSelectionProduct.boxPerPiece ?? null,
-          totalBox: challanProduct.totalBox ?? matchingSelectionProduct.totalBox ?? null,
-          totalSquareFeet: challanProduct.totalSquareFeet ?? matchingSelectionProduct.totalSquareFeet ?? 0,
-
-          // Product details from selection product (still primary source for names)
-          productName: matchingSelectionProduct.product_name || challanProduct.productName || 'Unknown Product',
-          variantName: matchingSelectionProduct.variant_name || challanProduct.variantName || '',
-          seriesName: matchingSelectionProduct.series_name || challanProduct.seriesName || '',
-          designCode: matchingSelectionProduct.design_code || challanProduct.designCode || '',
-          seriesId: matchingSelectionProduct.series_id || challanProduct.seriesId || '',
-          variantId: matchingSelectionProduct.variant_id || challanProduct.variantId || '',
-
-          // Selection context
-          selectionStatus: matchingSelection.status || null,
-          selectionCreatedAt: matchingSelection.createdAt || null,
-
-          // Additional details
-          isProductDeleted: matchingSelectionProduct.isProductDeleted || challanProduct.isProductDeleted || false,
-        };
-
-        productsWithDetails.push(productWithDetails);
-      }
+        if (matchingV1Product) {
+          return {
+            ...p,
+            productName: p.productName && p.productName !== 'Unknown Product' ? p.productName : (matchingV1Product.product_name || ''),
+            seriesName: p.seriesName ? p.seriesName : (Array.isArray(matchingV1Product.series_name) ? matchingV1Product.series_name.join(', ') : (matchingV1Product.series_name || '')),
+            dimension: p.dimension ? p.dimension : (matchingV1Product.dimension || ''),
+            designCode: p.designCode ? p.designCode : (matchingV1Product.design_code || ''),
+            variantName: p.variantName ? p.variantName : (matchingV1Product.variant_name || ''),
+            variantId: p.variantId ? p.variantId : (matchingV1Product.variant_id?.toString() || ''),
+            seriesId: p.seriesId ? p.seriesId : (matchingV1Product.series_id?.toString() || ''),
+          };
+        }
+        return p;
+      });
     }
 
     // Build the final response
@@ -173,8 +151,8 @@ exports.getChallanWithProducts = async (identifier, token) => {
       customerId: challan.customerId,
       selectionIds: challan.selectionIds,
       customer: customer || null,
-      selections: selections,
-      products: productsWithDetails,
+      selections: [],
+      products: products,
       totalAmount: challan.totalAmount,
       totalQuantity: challan.totalQuantity,
       status: challan.status,
@@ -194,7 +172,7 @@ exports.getChallanWithProducts = async (identifier, token) => {
       data: result
     };
   } catch (error) {
-    console.error('Error fetching challan details from v1:', error);
+    console.error('Error processing challan details:', error);
     return {
       success: false,
       message: `Failed to fetch challan details: ${error.message}`

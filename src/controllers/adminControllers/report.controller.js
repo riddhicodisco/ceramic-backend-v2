@@ -296,15 +296,130 @@ const getProfitLossSummary = catchAsync(async (req, res) => {
     tradingExpenses: tradingExpenses,
     discount: totalDiscount,
     freight: totalFreight,
-    sales: totalSaleAmount, 
+    sales: totalSaleAmount,
     totalReturns: totalReturns,
     grossProfit: grossProfit,
     grandTotal: totalSaleAmount
   });
 });
 
+/**
+ * Get daily sales and return report for a specific month
+ * @route GET /v1/admin/reports/daily-report?month=1&year=2026
+ */
+const getDailyReport = catchAsync(async (req, res) => {
+  const { month, year } = req.query;
+
+  if (!month || !year) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Month and Year are required');
+  }
+
+  const monthNum = parseInt(month, 10);
+  const yearNum = parseInt(year, 10);
+
+  if (isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid month');
+  }
+  if (isNaN(yearNum) || yearNum < 2000 || yearNum > 2100) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid year');
+  }
+
+  // Define start and end dates for the month
+  const startDate = new Date(yearNum, monthNum - 1, 1);
+  const endDate = new Date(yearNum, monthNum, 1);
+
+  // Aggregate Challans (Sales) by day
+  const salesAgg = await Challan.aggregate([
+    {
+      $match: {
+        deletedAt: null,
+        createdAt: {
+          $gte: startDate,
+          $lt: endDate,
+        },
+      },
+    },
+    {
+      $group: {
+        _id: { $dayOfMonth: '$createdAt' }, // Group by day (1-31)
+        amount: { $sum: '$totalAmount' },
+      },
+    },
+  ]);
+
+  // Aggregate Challan Returns (Sales Return) by day
+  const returnsAgg = await ChallanReturn.aggregate([
+    {
+      $match: {
+        deletedAt: null,
+        createdAt: {
+          $gte: startDate,
+          $lt: endDate,
+        },
+      },
+    },
+    {
+      $group: {
+        _id: { $dayOfMonth: '$createdAt' }, // Group by day (1-31)
+        amount: { $sum: '$totalAmount' },
+      },
+    },
+  ]);
+
+  // Create maps for easy lookup
+  const salesMap = {};
+  salesAgg.forEach((item) => {
+    salesMap[item._id] = item.amount;
+  });
+
+  const returnsMap = {};
+  returnsAgg.forEach((item) => {
+    returnsMap[item._id] = item.amount;
+  });
+
+  // Build daily data array
+  const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+  const dailyData = [];
+
+  let totalSaleAmount = 0;
+  let totalReturnAmount = 0;
+
+  for (let i = 1; i <= daysInMonth; i++) {
+    const saleAmount = salesMap[i] || 0;
+    const returnAmount = returnsMap[i] || 0;
+    const netAmount = saleAmount - returnAmount; // Net = Sales - Returns
+
+    totalSaleAmount += saleAmount;
+    totalReturnAmount += returnAmount;
+
+    dailyData.push({
+      day: i,
+      date: new Date(yearNum, monthNum - 1, i), // Construct date object for frontend formatting
+      saleAmount,
+      returnAmount,
+      netAmount,
+    });
+  }
+
+  // Calculate overall totals
+  const totalNetAmount = totalSaleAmount - totalReturnAmount;
+
+  res.send({
+    month: monthNum,
+    year: yearNum,
+    days: dailyData,
+    totals: {
+      saleAmount: totalSaleAmount,
+      returnAmount: totalReturnAmount,
+      netAmount: totalNetAmount,
+    },
+  });
+});
+
+
 
 module.exports = {
   getMonthlyPurchaseSale,
   getProfitLossSummary,
+  getDailyReport,
 };

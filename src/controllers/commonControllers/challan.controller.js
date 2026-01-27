@@ -209,7 +209,7 @@ module.exports = {
 
         const finalProduct = {
           ...product,
-          // ...metadata,
+          ...metadata,
           selectionId: realSelectionId,
           selectionProductId: realSelectionProductId,
           selectionName: selection?.requirementType || ''
