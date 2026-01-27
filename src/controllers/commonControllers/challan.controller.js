@@ -791,6 +791,20 @@ module.exports = {
       // Handle delete errors silently
     }
 
+    // Delete transporter history if transporter was associated with challan
+    if (challan.transporterId && challan.transporterAmount && challan.transporterAmount > 0) {
+      try {
+        await v1Service.deleteTransporterHistoryByChallan({
+          transporterId: challan.transporterId,
+          challanId: challan._id.toString(),
+          challanNumber: challan.challanNumber
+        }, req.headers.authorization);
+      } catch (historyError) {
+        console.warn('Could not delete transporter history in v1:', historyError.message);
+        // Don't fail the challan deletion if history deletion fails
+      }
+    }
+
     res.status(httpStatus.OK).send({
       success: true,
       message: 'Challan deleted successfully',
