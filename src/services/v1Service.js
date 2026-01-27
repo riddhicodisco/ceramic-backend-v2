@@ -421,6 +421,33 @@ console.log(data ,'data-----------------')
             throw new Error(`Failed to create transporter history in v1: ${error.message}`);
         }
     }
+
+    /**
+     * Delete transporter history by challan in v1
+     * @param {Object} deleteData - Delete data with transporterId, challanId, challanNumber
+     * @param {string} [token] - Authorization token
+     * @returns {Promise} - Fetch response
+     */
+    async deleteTransporterHistoryByChallan(deleteData, token) {
+        try {
+            const headers = {
+                'Content-Type': 'application/json',
+            };
+            if (token) headers.Authorization = token;
+
+            const response = await axios.post(`${this.baseURL}/v1/admin/transporter-history/delete-by-challan`, deleteData, { headers });
+            const data = response.data;
+
+            if (response.status !== 200 && response.status !== 201) {
+                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            }
+
+            return data?.data;
+        } catch (error) {
+            console.error('Error deleting transporter history in v1:', error.message);
+            throw new Error(`Failed to delete transporter history in v1: ${error.message}`);
+        }
+    }
 }
 
 module.exports = new V1Service();
