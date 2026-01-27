@@ -217,6 +217,12 @@ module.exports = {
 
         return finalProduct;
       });
+
+      // Add transporter amount to total amount if provided
+      if (transporterAmount && transporterAmount > 0) {
+        totalAmount += Number(transporterAmount);
+      }
+
       // Validate products not already used
       for (const product of enrichedProducts) {
         const existingChallanProduct = await challanService.get({
