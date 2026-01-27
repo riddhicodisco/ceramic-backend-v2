@@ -1,4 +1,4 @@
-const { Payment, Challan } = require('../../models');
+const { Payment, Challan, ChallanReturn } = require('../../models');
 const mongoose = require('mongoose');
 
 /**
@@ -71,7 +71,25 @@ const getCustomerBalance = async (customerId) => {
 
   const totalSales = challanAgg.length > 0 ? challanAgg[0].totalSales : 0;
 
-  // 2. Calculate Total Payments and Discounts
+  // 2. Calculate Total Returns from ChallanReturn collection
+  const returnAgg = await ChallanReturn.aggregate([
+    {
+      $match: {
+        customerId: customerObjectId,
+        deletedAt: null,
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        totalReturns: { $sum: '$totalAmount' },
+      },
+    },
+  ]);
+
+  const totalReturns = returnAgg.length > 0 ? returnAgg[0].totalReturns : 0;
+
+  // 3. Calculate Total Payments and Discounts
   const paymentAgg = await Payment.aggregate([
     {
       $match: {
@@ -102,12 +120,13 @@ const getCustomerBalance = async (customerId) => {
   const totalPayments = paymentAgg.length > 0 ? paymentAgg[0].totalPayments : 0;
   const totalDiscounts = paymentAgg.length > 0 ? paymentAgg[0].totalDiscounts : 0;
 
-  // 3. Final Calculation
-  const remainingBalance = totalSales - (totalPayments + totalDiscounts);
+  // 4. Final Calculation
+  const remainingBalance = totalSales - (totalPayments + totalReturns + totalDiscounts);
 
   return {
     totalSales,
     totalPayments,
+    totalReturns,
     totalDiscounts,
     remainingBalance,
   };

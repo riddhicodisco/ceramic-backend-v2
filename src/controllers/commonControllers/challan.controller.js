@@ -314,7 +314,8 @@ module.exports = {
       startDate,
       endDate,
       minAmount,
-      maxAmount
+      maxAmount,
+      selectionIds
     } = req.query;
 
     const matchStage = { deletedAt: null };
@@ -351,6 +352,10 @@ module.exports = {
       if (maxAmount !== undefined) {
         matchStage.totalAmount.$lte = Number(maxAmount);
       }
+    }
+
+    if (selectionIds) {
+      matchStage.selectionIds = { $in: selectionIds.split(',').map(id => new mongoose.Types.ObjectId(id.trim())) };
     }
 
     const pipeline = [
@@ -819,26 +824,104 @@ module.exports = {
   }),
 
   /**
-   * Download challan PDF
+   * Download challan
    */
   downloadChallan: catchAsync(async (req, res) => {
     const { id } = req.params;
+    const result = await challanService.getChallanWithProducts(id, req.headers.authorization);
 
-    const challan = await challanService.getChallanWithProducts(id, req.headers.authorization);
-
-    if (!challan.success) {
-      throw new ApiError(httpStatus.NOT_FOUND, challan.message);
+    if (!result.success) {
+      throw new ApiError(httpStatus.NOT_FOUND, result.message);
     }
 
-    // TODO: Generate PDF here
-    // For now, return a placeholder response
     res.status(httpStatus.OK).send({
       success: true,
-      message: 'Challan download functionality not yet implemented',
-      data: {
-        challanNumber: challan.data.challanNumber,
-        downloadUrl: `/challans/download/${id}`
-      }
+      message: 'Challan download details fetched successfully',
+      data: result.data,
     });
+  }),
+
+  /**
+   * Get customers with challan count
+   */
+  getCustomersWithChallans: catchAsync(async (req, res) => {
+    const { search } = req.query;
+    const token = req.headers.authorization;
+
+    const pipeline = [
+      { $match: { deletedAt: null } },
+      {
+        $group: {
+          _id: '$customerId',
+          challanCount: { $sum: 1 },
+          lastChallanDate: { $max: '$createdAt' },
+          totalAmount: { $sum: '$totalAmount' },
+          totalProducts: { $sum: { $size: { $ifNull: ['$products', []] } } },
+          totalSelection: { $sum: { $size: { $ifNull: ['$selectionIds', []] } } }
+        }
+      },
+      { $sort: { lastChallanDate: -1 } }
+    ];
+
+    const aggregatedCustomers = await challanService.aggregate(pipeline);
+
+    if (!aggregatedCustomers || aggregatedCustomers.length === 0) {
+      return res.status(httpStatus.OK).send({
+        success: true,
+        message: 'No customers with challans found',
+        data: [],
+      });
+    }
+
+    // Fetch customer details from V1
+    const customersWithDetails = [];
+    await Promise.all(aggregatedCustomers.map(async (item) => {
+      try {
+        if (!item._id) return;
+        const customer = await v1Service.getCustomer(item._id.toString(), token);
+
+        // Filter by search if provided
+        if (search) {
+          const searchLower = search.toLowerCase();
+          const fullName = `${customer?.first_name || ''} ${customer?.last_name || ''}`.toLowerCase();
+          const phone = customer?.phone || '';
+
+          if (!fullName.includes(searchLower) && !phone.includes(searchLower)) {
+            return;
+          }
+        }
+
+        if (customer) {
+          customersWithDetails.push({
+            ...customer,
+            challanCount: item.challanCount,
+            totalAmount: item.totalAmount,
+            totalProducts: item.totalProducts,
+            totalSelection: item.totalSelection,
+            lastChallanDate: item.lastChallanDate
+          });
+        }
+      } catch (err) {
+        console.warn(`Failed to fetch customer ${item._id} from V1`);
+      }
+    }));
+
+    customersWithDetails.sort((a, b) => new Date(b.lastChallanDate) - new Date(a.lastChallanDate));
+
+    res.status(httpStatus.OK).send({
+      success: true,
+      message: 'Customers with challans fetched successfully',
+      data: customersWithDetails,
+    });
+  }),
+
+  /**
+   * Get challans for specific customer
+   */
+  getCustomerChallans: catchAsync(async (req, res) => {
+    const { customerId } = req.params;
+    req.query.customerId = customerId;
+    req.query.limit = req.query.limit || 100; // Default to a larger limit for dropdowns
+    return module.exports.getAllChallans(req, res);
   }),
 };

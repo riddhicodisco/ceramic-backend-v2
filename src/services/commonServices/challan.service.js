@@ -170,6 +170,8 @@ exports.getChallanWithProducts = async (identifier, token) => {
     const result = {
       _id: challan._id,
       challanNumber: challan.challanNumber,
+      customerId: challan.customerId,
+      selectionIds: challan.selectionIds,
       customer: customer || null,
       selections: selections,
       products: productsWithDetails,

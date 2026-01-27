@@ -2,6 +2,7 @@ const httpStatus = require('http-status');
 const catchAsync = require('../../utils/catchAsync');
 const PurchaseOrder = require('../../models/purchaseOrder.model');
 const Challan = require('../../models/challan.model');
+const ChallanReturn = require('../../models/challanReturn.model');
 const Payment = require('../../models/payment.model');
 const Expense = require('../../models/expense.model');
 const ApiError = require('../../utils/apiError');
@@ -274,16 +275,29 @@ const getProfitLossSummary = catchAsync(async (req, res) => {
   ]);
   const totalFreight = freightAgg.length > 0 ? freightAgg[0].totalAmount : 0;
 
+  // 5. Total Returns (ChallanReturn)
+  const returnFilter = year ? {
+    deletedAt: null,
+    createdAt: filter.createdAt
+  } : { deletedAt: null };
+
+  const returnAgg = await ChallanReturn.aggregate([
+    { $match: returnFilter },
+    { $group: { _id: null, totalAmount: { $sum: '$totalAmount' } } }
+  ]);
+  const totalReturns = returnAgg.length > 0 ? returnAgg[0].totalAmount : 0;
+
 
   const tradingExpenses = totalDiscount + totalFreight;
-  const grossProfit = totalSaleAmount - (totalPurchaseAmount + tradingExpenses);
+  const grossProfit = totalSaleAmount - (totalPurchaseAmount + tradingExpenses + totalReturns);
 
   res.send({
     purchaseStock: totalPurchaseAmount,
     tradingExpenses: tradingExpenses,
     discount: totalDiscount,
     freight: totalFreight,
-    sales: totalSaleAmount,
+    sales: totalSaleAmount, 
+    totalReturns: totalReturns,
     grossProfit: grossProfit,
     grandTotal: totalSaleAmount
   });

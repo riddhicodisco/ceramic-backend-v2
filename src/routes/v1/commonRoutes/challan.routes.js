@@ -57,6 +57,19 @@ router.delete(
 // );
 
 router.get(
+  '/customers',
+  authorizeV3(ROLES.admin, ROLES.accountant),
+  challanController.getCustomersWithChallans
+);
+
+router.get(
+  '/customer/:customerId',
+  authorizeV3(ROLES.admin, ROLES.accountant),
+  validate(challanValidation.getCustomerChallans),
+  challanController.getCustomerChallans
+);
+
+router.get(
   '/download/:id',
   authorizeV3(ROLES.admin, ROLES.accountant),
   challanController.downloadChallan
