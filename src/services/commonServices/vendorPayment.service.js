@@ -110,7 +110,7 @@ const updateVendorPaymentById = async (paymentId, updateBody) => {
 };
 
 /**
- * Delete vendor payment by id
+ * Delete vendor payment by id (Hard delete)
  * @param {ObjectId} paymentId
  * @returns {Promise<VendorPayment>}
  */
@@ -120,28 +120,25 @@ const deleteVendorPaymentById = async (paymentId) => {
     throw new Error('Vendor payment not found');
   }
 
-  const now = new Date();
-
   // If this is a child (Credit Note) being deleted
   if (vendorPayment.category === 'Credit Note' && vendorPayment.relatedPaymentId) {
-    // 1. Soft delete the child itself
-    vendorPayment.deletedAt = now;
-    await vendorPayment.save();
+    // 1. Hard delete the child (Credit Note) itself
+    await VendorPayment.findByIdAndDelete(paymentId);
 
-    // 2. Find and update the parent (Main Payment)
+    // 2. Update the parent (Main Payment) to remove discount reference
     await VendorPayment.findByIdAndUpdate(vendorPayment.relatedPaymentId, {
       discountGiven: 0,
       relatedPaymentId: null,
     });
   } else {
     // If this is a parent (Main Payment) being deleted
-    vendorPayment.deletedAt = now;
-    await vendorPayment.save();
-
-    // Soft delete the sibling Credit Note if it exists
+    // Hard delete the sibling Credit Note if it exists
     if (vendorPayment.relatedPaymentId) {
-      await VendorPayment.findByIdAndUpdate(vendorPayment.relatedPaymentId, { deletedAt: now });
+      await VendorPayment.findByIdAndDelete(vendorPayment.relatedPaymentId);
     }
+
+    // Hard delete the main payment
+    await VendorPayment.findByIdAndDelete(paymentId);
   }
 
   return vendorPayment;
