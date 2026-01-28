@@ -100,6 +100,12 @@ const challanReturnSchema = new mongoose.Schema(
   {
     timestamps: true,
     versionKey: false,
+    toJSON: {
+      transform: (doc, ret) => {
+        ret.createdAt = doc.createdAt;
+        return ret;
+      },
+    },
   }
 );
 

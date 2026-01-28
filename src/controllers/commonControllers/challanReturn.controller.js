@@ -127,11 +127,42 @@ module.exports = {
       customer = await v1Service.getCustomer(challanReturn.customerId.toString(), req.headers.authorization);
     }
 
+    // Enrich products with metadata if missing (backward compatibility)
+    let enrichedProducts = challanReturn.products || [];
+    try {
+      const challanResult = await challanService.getChallanWithProducts(challanReturn.challanId.toString(), req.headers.authorization);
+      if (challanResult.success && challanResult.data?.products) {
+        const challanProducts = challanResult.data.products;
+        enrichedProducts = challanReturn.products.map(p => {
+          const productObj = p.toObject ? p.toObject() : p;
+          // Find matching product in original challan
+          const originalProd = challanProducts.find(cp =>
+            (cp.productVariantId?.toString() === productObj.productVariantId?.toString())
+          );
+
+          if (originalProd) {
+            return {
+              ...productObj,
+              productName: productObj.productName || originalProd.productName || '',
+              seriesName: productObj.seriesName || originalProd.seriesName || '',
+              dimension: productObj.dimension || originalProd.dimension || '',
+              designCode: productObj.designCode || originalProd.designCode || '',
+              variantName: productObj.variantName || originalProd.variantName || '',
+            };
+          }
+          return productObj;
+        });
+      }
+    } catch (error) {
+      console.warn('Could not enrich Challan Return products from parent challan:', error.message);
+    }
+
     res.status(httpStatus.OK).send({
       success: true,
       message: 'Challan return details fetched successfully',
       data: {
         ...challanReturn.toJSON(),
+        products: enrichedProducts,
         customer,
       },
     });
@@ -175,10 +206,42 @@ module.exports = {
     // Process Update
     const updatedReturn = await challanReturnService.updateById(id, updateBody);
 
+    // Enrich products with metadata if missing (backward compatibility)
+    let enrichedProducts = updatedReturn.products || [];
+    try {
+      const challanResult = await challanService.getChallanWithProducts(updatedReturn.challanId.toString(), req.headers.authorization);
+      if (challanResult.success && challanResult.data?.products) {
+        const challanProducts = challanResult.data.products;
+        enrichedProducts = updatedReturn.products.map(p => {
+          const productObj = p.toObject ? p.toObject() : p;
+          const originalProd = challanProducts.find(cp =>
+            (cp.productVariantId?.toString() === productObj.productVariantId?.toString())
+          );
+
+          if (originalProd) {
+            return {
+              ...productObj,
+              productName: productObj.productName || originalProd.productName || '',
+              seriesName: productObj.seriesName || originalProd.seriesName || '',
+              dimension: productObj.dimension || originalProd.dimension || '',
+              designCode: productObj.designCode || originalProd.designCode || '',
+              variantName: productObj.variantName || originalProd.variantName || '',
+            };
+          }
+          return productObj;
+        });
+      }
+    } catch (error) {
+      console.warn('Could not enrich Updated Challan Return products from parent challan:', error.message);
+    }
+
     res.status(httpStatus.OK).send({
       success: true,
       message: 'Challan return updated successfully',
-      data: updatedReturn,
+      data: {
+        ...updatedReturn.toJSON(),
+        products: enrichedProducts,
+      },
     });
   }),
 
