@@ -581,6 +581,8 @@ module.exports = {
           createdBy: { $first: '$createdBy' },
           createdAt: { $first: '$createdAt' },
           updatedAt: { $first: '$updatedAt' },
+          purchaseOrderId: { $first: '$purchaseOrderId' },
+          deliveryNote: {$first: '$deliveryNote'}
         }
       },
 
