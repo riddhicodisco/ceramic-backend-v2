@@ -14,7 +14,7 @@ module.exports = {
    */
   createChallan: catchAsync(async (req, res) => {
     try {
-      const { customerId, customerMode, newCustomerData, selectionIds, products, remarks, status, assignTo, newCustomerSelections, transporterId, transporterName, transporterAmount } = req.body;
+      const { customerId, customerMode, newCustomerData, selectionIds, products, remarks, status, assignTo, newCustomerSelections, transporterId, transporterName, transporterAmount, purchaseOrderId, deliveryNote } = req.body;
       const token = req.headers.authorization;
 
       // Validation: customerId is required for existing customer, optional for new customer
@@ -257,6 +257,8 @@ module.exports = {
           transporterId: transporterId || null,
           transporterName: transporterName || null,
           transporterAmount: transporterAmount || 0,
+          purchaseOrderId: purchaseOrderId || null,
+          deliveryNote: deliveryNote || null,
           createdBy: req.user._id,
         }, { session });
 
@@ -742,7 +744,7 @@ module.exports = {
 
     if (remarks !== undefined) challan.remarks = remarks;
     if (status) challan.status = status;
-    if (purchaseOrderId) challan.purchaseOrderId = purchaseOrderId;
+    if (purchaseOrderId !== undefined) challan.purchaseOrderId = purchaseOrderId;
     if (deliveryNote !== undefined) challan.deliveryNote = deliveryNote;
 
     await challan.save();
