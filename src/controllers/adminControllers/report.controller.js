@@ -527,8 +527,10 @@ const getBalanceSheet = catchAsync(async (req, res) => {
   });
 
   // Calculate balances and fetch customer details
-  const customerCreditors = [];
+  // - customerDebtors: customers who owe us money (asset, positive remainingBalance)
+  // - customerCreditors: customers we owe money to (liability, negative remainingBalance)
   const customerDebtors = [];
+  const customerCreditors = [];
 
   await Promise.all(
     Array.from(customerMap.values()).map(async (customerData) => {
@@ -552,9 +554,11 @@ const getBalanceSheet = catchAsync(async (req, res) => {
       };
 
       if (remainingBalance > 0) {
-        customerCreditors.push(customerEntry);
-      } else if (remainingBalance < 0) {
+        // positive => customer owes us (debtor / asset)
         customerDebtors.push(customerEntry);
+      } else if (remainingBalance < 0) {
+        // negative => we owe customer (creditor / liability)
+        customerCreditors.push(customerEntry);
       }
     })
   );
@@ -655,7 +659,9 @@ const getBalanceSheet = catchAsync(async (req, res) => {
 
   await Promise.all(
     Array.from(vendorMap.values()).map(async (vendorData) => {
-      const remainingBalance = vendorData.totalPurchaseOrders - (vendorData.totalPayments + vendorData.totalDiscounts);
+      // positive remainingBalance => vendor owes us (asset)
+      // negative remainingBalance => we owe vendor (liability)
+      const remainingBalance = (vendorData.totalPayments + vendorData.totalDiscounts) - vendorData.totalPurchaseOrders;
       
       let vendorDetails = null;
       try {
@@ -675,19 +681,25 @@ const getBalanceSheet = catchAsync(async (req, res) => {
       };
 
       if (remainingBalance > 0) {
-        vendorCreditors.push(vendorEntry);
-      } else if (remainingBalance < 0) {
+        // vendor owes us -> asset
         vendorDebtors.push(vendorEntry);
+      } else if (remainingBalance < 0) {
+        // we owe vendor -> liability
+        vendorCreditors.push(vendorEntry);
       }
     })
   );
 
   // Calculate summary totals
   const summary = {
-    vendorCreditorsTotal: vendorCreditors.reduce((sum, v) => sum + v.remainingBalance, 0),
-    vendorDebtorsTotal: Math.abs(vendorDebtors.reduce((sum, v) => sum + v.remainingBalance, 0)),
-    customerCreditorsTotal: customerCreditors.reduce((sum, c) => sum + c.remainingBalance, 0),
-    customerDebtorsTotal: Math.abs(customerDebtors.reduce((sum, c) => sum + c.remainingBalance, 0)),
+    // vendorDebtors: vendors who owe us (assets) -> positive sums
+    vendorDebtorsTotal: vendorDebtors.reduce((sum, v) => sum + v.remainingBalance, 0),
+    // vendorCreditors: vendors we owe (liabilities) -> store as absolute value
+    vendorCreditorsTotal: Math.abs(vendorCreditors.reduce((sum, v) => sum + v.remainingBalance, 0)),
+    // customerDebtors: customers who owe us money (assets) -> positive sums
+    customerDebtorsTotal: customerDebtors.reduce((sum, c) => sum + c.remainingBalance, 0),
+    // customerCreditors: customers we owe money to (liabilities) -> store as absolute value
+    customerCreditorsTotal: Math.abs(customerCreditors.reduce((sum, c) => sum + c.remainingBalance, 0)),
   };
 
   res.status(httpStatus.OK).send({
@@ -698,10 +710,14 @@ const getBalanceSheet = catchAsync(async (req, res) => {
         startDate: startDate || null,
         endDate: endDate || null,
       },
-      vendorCreditors: vendorCreditors.sort((a, b) => b.remainingBalance - a.remainingBalance),
-      vendorDebtors: vendorDebtors.sort((a, b) => a.remainingBalance - b.remainingBalance),
-      customerCreditors: customerCreditors.sort((a, b) => b.remainingBalance - a.remainingBalance),
-      customerDebtors: customerDebtors.sort((a, b) => a.remainingBalance - b.remainingBalance),
+      // vendors who owe us (assets) - sort descending by amount owed
+      vendorDebtors: vendorDebtors.sort((a, b) => b.remainingBalance - a.remainingBalance),
+      // vendors we owe (liabilities) - negative balances, sort so largest liabilities appear first (most negative)
+      vendorCreditors: vendorCreditors.sort((a, b) => a.remainingBalance - b.remainingBalance),
+      // customers who owe us (assets) - sort descending by amount owed
+      customerDebtors: customerDebtors.sort((a, b) => b.remainingBalance - a.remainingBalance),
+      // customers we owe (liabilities) - negative balances, sort so largest liabilities appear first (most negative)
+      customerCreditors: customerCreditors.sort((a, b) => a.remainingBalance - b.remainingBalance),
       summary,
     },
   });
