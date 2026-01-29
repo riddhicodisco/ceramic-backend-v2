@@ -10,14 +10,14 @@ const router = express.Router();
 // Get vendors with purchase order count (for hidden feature vendor list)
 router.get(
   '/with-purchase-orders',
-  authorizeV3(ROLES.admin, ROLES.accountant),
+  authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
   vendorController.getVendorsWithPurchaseOrders
 );
 
 // Get purchase orders for specific vendor with filters
 router.get(
   '/:vendorId/purchase-orders',
-  authorizeV3(ROLES.admin, ROLES.accountant),
+  authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
   validate(vendorValidation.getVendorPurchaseOrders),
   vendorController.getVendorPurchaseOrders
 );

@@ -10,12 +10,12 @@ const router = express.Router();
 router
   .route('/')
   .post(
-    authorizeV3(ROLES.admin, ROLES.accountant),
+    authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
     validate(discountValidation.createDiscount),
     discountController.createDiscount
   )
   .get(
-    authorizeV3(ROLES.admin, ROLES.accountant),
+    authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
     validate(discountValidation.getDiscounts),
     discountController.getDiscounts
   );
@@ -23,12 +23,12 @@ router
 router
   .route('/:discountId')
   .get(
-    authorizeV3(ROLES.admin, ROLES.accountant),
+    authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
     validate(discountValidation.getDiscount),
     discountController.getDiscount
   )
   .delete(
-    authorizeV3(ROLES.admin, ROLES.accountant),
+    authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
     validate(discountValidation.deleteDiscount),
     discountController.deleteDiscount
   );

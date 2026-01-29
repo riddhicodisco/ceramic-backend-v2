@@ -9,42 +9,42 @@ const router = express.Router();
 
 router.post(
   '/create',
-  authorizeV3(ROLES.admin, ROLES.accountant),
+  authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
   validate(challanValidation.createChallan),
   challanController.createChallan // Use common controller
 );
 
 router.get(
   '/list',
-  authorizeV3(ROLES.admin, ROLES.accountant),
+  authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
   validate(challanValidation.getAllChallans),
   challanController.getAllChallans
 );
 
 router.get(
   '/recent',
-  authorizeV3(ROLES.admin, ROLES.accountant),
+  authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
   validate(challanValidation.getRecentChallans),
   challanController.getRecentChallans
 );
 
 router.get(
   '/get/:id',
-  authorizeV3(ROLES.admin, ROLES.accountant),
+  authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
   validate(challanValidation.getChallan),
   challanController.getChallan
 );
 
 router.put(
   '/update/:id',
-  authorizeV3(ROLES.admin, ROLES.accountant),
+  authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
   validate(challanValidation.updateChallan),
   challanController.updateChallan
 );
 
 router.delete(
   '/delete/:id',
-  authorizeV3(ROLES.admin, ROLES.accountant),
+  authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
   validate(challanValidation.deleteChallan),
   challanController.deleteChallan
 );
@@ -58,20 +58,20 @@ router.delete(
 
 router.get(
   '/customers',
-  authorizeV3(ROLES.admin, ROLES.accountant),
+  authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
   challanController.getCustomersWithChallans
 );
 
 router.get(
   '/customer/:customerId',
-  authorizeV3(ROLES.admin, ROLES.accountant),
+  authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
   validate(challanValidation.getCustomerChallans),
   challanController.getCustomerChallans
 );
 
 router.get(
   '/download/:id',
-  authorizeV3(ROLES.admin, ROLES.accountant),
+  authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
   challanController.downloadChallan
 );
 

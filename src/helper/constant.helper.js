@@ -9,6 +9,7 @@ module.exports = {
     ROLES: {
         // superAdmin: 'SuperAdmin',
         admin: 'Admin',
+        subAdmin: 'Sub Admin',
         user: 'User',
         seller: 'Seller',
         // customer: 'Customer',

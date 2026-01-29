@@ -7,12 +7,12 @@ const { reportValidation } = require('../../../validations');
 
 const router = express.Router();
 
-router.route('/monthly-purchase-sale').get(authorizeV3(ROLES.admin, ROLES.accountant), reportController.getMonthlyPurchaseSale);
-router.route('/profit-loss-summary').get(authorizeV3(ROLES.admin, ROLES.accountant), reportController.getProfitLossSummary);
-router.route('/daily-report').get(authorizeV3(ROLES.admin, ROLES.accountant), reportController.getDailyReport);
+router.route('/monthly-purchase-sale').get(authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant), reportController.getMonthlyPurchaseSale);
+router.route('/profit-loss-summary').get(authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant), reportController.getProfitLossSummary);
+router.route('/daily-report').get(authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant), reportController.getDailyReport);
 
 router.route('/balance-sheet').get(
-  authorizeV3(ROLES.admin, ROLES.accountant),
+  authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
   validate(reportValidation.getBalanceSheet),
   reportController.getBalanceSheet
 );

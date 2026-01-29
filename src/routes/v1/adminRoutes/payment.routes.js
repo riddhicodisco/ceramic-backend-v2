@@ -10,12 +10,12 @@ const router = express.Router();
 router
   .route('/')
   .post(
-    authorizeV3(ROLES.admin, ROLES.accountant),
+    authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
     validate(paymentValidation.createPayment),
     paymentController.createPayment
   )
   .get(
-    authorizeV3(ROLES.admin, ROLES.accountant),
+    authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
     validate(paymentValidation.getPayments),
     paymentController.getPayments
   );
@@ -23,7 +23,7 @@ router
 router
   .route('/balance/:customerId')
   .get(
-    authorizeV3(ROLES.admin, ROLES.accountant),
+    authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
     validate(paymentValidation.getCustomerBalance),
     paymentController.getCustomerBalance
   );
@@ -31,17 +31,17 @@ router
 router
   .route('/:paymentId')
   .get(
-    authorizeV3(ROLES.admin, ROLES.accountant),
+    authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
     validate(paymentValidation.getPayment),
     paymentController.getPayment
   )
   .put(
-    authorizeV3(ROLES.admin, ROLES.accountant),
+    authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
     validate(paymentValidation.updatePayment),
     paymentController.updatePayment
   )
   .delete(
-    authorizeV3(ROLES.admin, ROLES.accountant),
+    authorizeV3(ROLES.admin, ROLES.subAdmin, ROLES.accountant),
     validate(paymentValidation.deletePayment),
     paymentController.deletePayment
   );
