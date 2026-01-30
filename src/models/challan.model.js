@@ -27,7 +27,7 @@ const challanProductSchema = new mongoose.Schema(
       default: 'N/A',
     },
 
-    
+
     quantity: {
       type: Number,
       required: false, // Make optional for challan creation
@@ -164,8 +164,8 @@ const challanSchema = new mongoose.Schema(
       default: '',
     },
     purchaseOrderId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'PurchaseOrder',
+      type: String,
+      trim: true,
     },
     deliveryNote: {
       type: String,

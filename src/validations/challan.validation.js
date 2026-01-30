@@ -61,6 +61,8 @@ module.exports = {
       transporterId: Joi.string().custom(objectId).optional().allow(null, ''),
       transporterName: Joi.string().trim().optional().allow('', null),
       transporterAmount: Joi.number().min(0).optional().allow(null),
+      purchaseOrderId: Joi.string().optional().allow('', null),
+      deliveryNote: Joi.string().trim().optional().allow(''),
     }).unknown(true),
   },
 
@@ -74,7 +76,7 @@ module.exports = {
       products: Joi.array().items(challanProductSchema).min(1).optional(),
       remarks: Joi.string().trim().optional().allow(''),
       status: Joi.string().valid('Pending', 'Running', 'Completed', 'Delivered').optional(),
-      purchaseOrderId: Joi.string().custom(objectId).optional().allow(''),
+      purchaseOrderId: Joi.string().optional().allow('', null),
       deliveryNote: Joi.string().trim().optional().allow(''),
       transporterId: Joi.string().custom(objectId).optional().allow(null, ''),
       transporterName: Joi.string().trim().optional().allow('', null),
