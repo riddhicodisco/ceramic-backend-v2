@@ -138,7 +138,7 @@ const getCustomerBalance = async (customerId) => {
  * @returns {Promise<Payment>}
  */
 const getPaymentById = async (id) => {
-  return Payment.findOne({ _id: id, deletedAt: null });
+  return Payment.findOne({ _id: id, deletedAt: null }).populate('customerId');
 };
 
 /**

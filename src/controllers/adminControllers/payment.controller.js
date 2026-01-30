@@ -21,6 +21,7 @@ const getPayments = catchAsync(async (req, res) => {
     filter.remark = { $regex: req.query.search, $options: 'i' };
   }
   const options = pick(req.query, ['sortBy', 'limit', 'page']);
+  options.populate = 'customerId';
   const result = await paymentService.queryPayments(filter, options);
   res.send(result);
 });

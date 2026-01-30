@@ -82,23 +82,51 @@ module.exports = {
     const returns = await challanReturnService.aggregate(pipeline);
 
     if (returns[0] && returns[0].results && returns[0].results.length > 0) {
-      const resultsWithCustomer = await Promise.all(
+      const resultsWithDetails = await Promise.all(
         returns[0].results.map(async (ret) => {
-          let customer = null;
-          if (ret.customerId) {
-            try {
-              customer = await v1Service.getCustomer(ret.customerId.toString(), req.headers.authorization);
-            } catch (error) {
-              console.warn(`Could not fetch customer ${ret.customerId} from v1:`, error.message);
-            }
-          }
-          return {
-            ...ret,
-            customer,
-          };
+          const retObj = { ...ret };
+          const token = req.headers.authorization;
+
+          await Promise.all([
+            // Fetch Customer
+            (async () => {
+              if (ret.customerId) {
+                try {
+                  retObj.customer = await v1Service.getCustomer(ret.customerId.toString(), token);
+                } catch (error) {
+                  console.warn(`Could not fetch customer ${ret.customerId} from v1:`, error.message);
+                }
+              }
+            })(),
+            // Fetch Creator
+            (async () => {
+              if (ret.createdBy) {
+                try {
+                  retObj.createdBy = await v1Service.getUser(ret.createdBy.toString(), token);
+                } catch (error) {
+                  console.warn(`Could not fetch creator ${ret.createdBy} from v1:`, error.message);
+                }
+              }
+            })(),
+            // Fetch Challan
+            (async () => {
+              if (ret.challanId) {
+                try {
+                  const challan = await challanService.get({ _id: ret.challanId, deletedAt: null });
+                  if (challan) {
+                    retObj.challan = challan;
+                  }
+                } catch (error) {
+                  console.warn(`Could not fetch challan ${ret.challanId}:`, error.message);
+                }
+              }
+            })()
+          ]);
+
+          return retObj;
         })
       );
-      returns[0].results = resultsWithCustomer;
+      returns[0].results = resultsWithDetails;
     }
 
     res.status(httpStatus.OK).send({
@@ -123,14 +151,30 @@ module.exports = {
     }
 
     let customer = null;
-    if (challanReturn.customerId) {
-      customer = await v1Service.getCustomer(challanReturn.customerId.toString(), req.headers.authorization);
-    }
+    let creator = null;
+    const token = req.headers.authorization;
+
+    await Promise.all([
+      (async () => {
+        if (challanReturn.customerId) {
+          customer = await v1Service.getCustomer(challanReturn.customerId.toString(), token);
+        }
+      })(),
+      (async () => {
+        if (challanReturn.createdBy) {
+          try {
+            creator = await v1Service.getUser(challanReturn.createdBy.toString(), token);
+          } catch (error) {
+            console.warn(`Could not fetch creator ${challanReturn.createdBy} from v1:`, error.message);
+          }
+        }
+      })()
+    ]);
 
     // Enrich products with metadata if missing (backward compatibility)
     let enrichedProducts = challanReturn.products || [];
     try {
-      const challanResult = await challanService.getChallanWithProducts(challanReturn.challanId.toString(), req.headers.authorization);
+      const challanResult = await challanService.getChallanWithProducts(challanReturn.challanId.toString(), token);
       if (challanResult.success && challanResult.data?.products) {
         const challanProducts = challanResult.data.products;
         enrichedProducts = challanReturn.products.map(p => {
@@ -164,6 +208,7 @@ module.exports = {
         ...challanReturn.toJSON(),
         products: enrichedProducts,
         customer,
+        createdBy: creator,
       },
     });
   }),

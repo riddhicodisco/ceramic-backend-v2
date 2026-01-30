@@ -127,7 +127,7 @@ module.exports = {
               const v1Product = await v1Service.getSeriesProduct(item.productVariantId.toString(), token);
               if (v1Product) {
                 productDetails = {
-                  ...productDetails, 
+                  ...productDetails,
                   itemCode: productDetails.itemCode || v1Product.item_code,
                   itemName: productDetails.itemName || v1Product.product_name,
                   productName: productDetails.productName || v1Product.product_name,
@@ -169,7 +169,7 @@ module.exports = {
             discount: discount,
             price: unitPerPrice - (discount / 100) * unitPerPrice,
             totalAmount: total,
-            totalSquareFeet: totalSquareFeet || 0 ,
+            totalSquareFeet: totalSquareFeet || 0,
             totalBox: totalBox,
             boxPerPiece: boxPerPiece,
             unit: unit,
@@ -222,7 +222,7 @@ module.exports = {
 
     // If user is accountant, only show last 2 minutes records for testing
     if (req.user.role.role === 'Accountant') {
-       const sevenDaysAgo = new Date();
+      const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       sevenDaysAgo.setHours(0, 0, 0, 0); // Start of day
       filter.createdAt = { $gte: sevenDaysAgo };
@@ -265,21 +265,37 @@ module.exports = {
 
     const purchaseOrders = purchaseOrdersResult.results;
 
-    // Populate vendor details for each purchase order
+    // Populate vendor and creator details for each purchase order
     const enrichedResults = await Promise.all(purchaseOrders.map(async (purchaseOrder) => {
       const poObj = purchaseOrder.toObject();
 
-      if (poObj.vendor) {
-        try {
-          const vendorData = await v1Service.getVendor(poObj.vendor.toString(), token);
-          if (vendorData) {
-            poObj.vendorDetails = vendorData;
-            poObj.vendor = vendorData; // frontend often expects .vendor to be the object
+      await Promise.all([
+        (async () => {
+          if (poObj.vendor) {
+            try {
+              const vendorData = await v1Service.getVendor(poObj.vendor.toString(), token);
+              if (vendorData) {
+                poObj.vendor = vendorData;
+              }
+            } catch (error) {
+              console.warn(`Failed to fetch vendor for PO ${poObj.orderId}:`, error.message);
+            }
           }
-        } catch (error) {
-          console.warn(`Failed to fetch vendor for PO ${poObj.orderId}:`, error.message);
-        }
-      }
+        })(),
+        (async () => {
+          if (poObj.createdBy) {
+            try {
+              const userData = await v1Service.getUser(poObj.createdBy.toString(), token);
+              if (userData) {
+                poObj.createdBy = userData;
+              }
+            } catch (error) {
+              console.warn(`Failed to fetch creator for PO ${poObj.orderId}:`, error.message);
+            }
+          }
+        })()
+      ]);
+
       return poObj;
     }));
 
@@ -308,37 +324,43 @@ module.exports = {
       throw new ApiError(httpStatus.NOT_FOUND, 'Purchase order not found');
     }
 
-    if (purchaseOrder.vendor) {
-      if (purchaseOrder.vendor) {
-        try {
-          const token = req.headers.authorization;
-          const vendorData = await v1Service.getVendor(purchaseOrder.vendor.toString(), token);
+    const responseData = purchaseOrder.toObject();
+    const token = req.headers.authorization;
 
-          if (vendorData) {
-            // Attach vendor details
-            const responseData = purchaseOrder.toObject ? purchaseOrder.toObject() : { ...purchaseOrder };
-            responseData.vendorDetails = vendorData;
-            responseData.vendor = vendorData;
-
-            return res.status(httpStatus.OK).send({
-              success: true,
-              message: 'Purchase order details fetched successfully',
-              data: responseData,
-            });
+    await Promise.all([
+      (async () => {
+        if (responseData.vendor) {
+          try {
+            const vendorData = await v1Service.getVendor(responseData.vendor.toString(), token);
+            if (vendorData) {
+              responseData.vendor = vendorData;
+              responseData.vendorDetails = vendorData;
+            }
+          } catch (error) {
+            console.warn('Failed to fetch vendor details from V1:', error.message);
           }
-        } catch (error) {
-          console.warn('Failed to fetch vendor details from V1:', error.message);
         }
-      }
+      })(),
+      (async () => {
+        if (responseData.createdBy) {
+          try {
+            const userData = await v1Service.getUser(responseData.createdBy.toString(), token);
+            if (userData) {
+              responseData.createdBy = userData;
+            }
+          } catch (error) {
+            console.warn('Failed to fetch creator details from V1:', error.message);
+          }
+        }
+      })()
+    ]);
 
-      res.status(httpStatus.OK).send({
-        success: true,
-        message: 'Purchase order details fetched successfully',
-        data: purchaseOrder, 
-      });
-    }
-  }
-  ),
+    res.status(httpStatus.OK).send({
+      success: true,
+      message: 'Purchase order details fetched successfully',
+      data: responseData,
+    });
+  }),
 
   /**
    * Update purchase order
@@ -419,7 +441,7 @@ module.exports = {
 
       for (const item of items) {
         const mrp = parseFloat(item.mrp) || 0;
-        const unitPerPrice = parseFloat(item.unitPerPrice) ;
+        const unitPerPrice = parseFloat(item.unitPerPrice);
         const discount = parseFloat(item.discount) || 0;
         const totalBox = parseFloat(item.totalBox) || 0;
         const boxPerPiece = parseFloat(item.boxPerPiece) || 0;
@@ -502,7 +524,7 @@ module.exports = {
           discount: discount,
           price: unitPerPrice - (discount / 100) * unitPerPrice,
           totalAmount: total,
-          totalSquareFeet:totalSquareFeet,
+          totalSquareFeet: totalSquareFeet,
           totalBox: totalBox,
           boxPerPiece: boxPerPiece,
           unit: unit,
