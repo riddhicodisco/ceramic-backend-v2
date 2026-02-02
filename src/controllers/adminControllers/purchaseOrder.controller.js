@@ -104,9 +104,9 @@ module.exports = {
           }
 
           const discountAmount = (discount / 100) * itemTotal;
-          const total = itemTotal - discountAmount;
+          const total = Number((itemTotal - discountAmount).toFixed(2));
 
-          totalAmount += total;
+          totalAmount = Number((totalAmount + total).toFixed(2));
           totalQuantity += (unit === 'Piece/Price' ? totalBox * boxPerPiece : (totalSquareFeet || quantity));
 
           // Try to fetch product details from v1 for enrichment
@@ -456,9 +456,9 @@ module.exports = {
         }
 
         const discountAmount = (discount / 100) * itemTotal;
-        const total = itemTotal - discountAmount;
+        const total = Number((itemTotal - discountAmount).toFixed(2));
 
-        totalAmount += total;
+        totalAmount = Number((totalAmount + total).toFixed(2));
         totalQuantity += (unit === 'Piece/Price' ? totalBox * boxPerPiece : (totalSquareFeet || quantity));
 
         let productDetails = {

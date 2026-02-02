@@ -69,8 +69,7 @@ module.exports = {
           ) {
             throw new ApiError(
               httpStatus.BAD_REQUEST,
-              `Failed to create customer: ${
-                customerResponse.data?.message || "Unknown error"
+              `Failed to create customer: ${customerResponse.data?.message || "Unknown error"
               }`,
             );
           }
@@ -93,8 +92,7 @@ module.exports = {
           }
           throw new ApiError(
             httpStatus.BAD_REQUEST,
-            `Failed to create customer: ${
-              error.response?.data?.message || error.message || "Unknown error"
+            `Failed to create customer: ${error.response?.data?.message || error.message || "Unknown error"
             }`,
           );
         }
@@ -148,8 +146,7 @@ module.exports = {
         ) {
           throw new ApiError(
             httpStatus.BAD_REQUEST,
-            `Failed to create selections: ${
-              selectionResponse.data?.message || "Unknown error"
+            `Failed to create selections: ${selectionResponse.data?.message || "Unknown error"
             }`,
           );
         }
@@ -194,8 +191,7 @@ module.exports = {
         if (assignResponse.status !== 200 && assignResponse.status !== 201) {
           throw new ApiError(
             httpStatus.BAD_REQUEST,
-            `Failed to assign customer: ${
-              assignResponse.data?.message || "Unknown error"
+            `Failed to assign customer: ${assignResponse.data?.message || "Unknown error"
             }`,
           );
         }
@@ -262,7 +258,7 @@ module.exports = {
             (p) =>
               (p.product_variant_id &&
                 p.product_variant_id.toString() ===
-                  product.productVariantId?.toString()) ||
+                product.productVariantId?.toString()) ||
               (p._id &&
                 p._id.toString() === realSelectionProductId?.toString()),
           );
@@ -311,6 +307,8 @@ module.exports = {
       if (transporterAmount && transporterAmount > 0) {
         totalAmount += Number(transporterAmount);
       }
+
+      totalAmount = Number(totalAmount.toFixed(2));
 
       // Validate products not already used
       for (const product of enrichedProducts) {
@@ -881,7 +879,7 @@ module.exports = {
       });
 
       challan.products = products;
-      challan.totalAmount = totalAmount;
+      challan.totalAmount = Number(totalAmount.toFixed(2));
       challan.totalQuantity = totalQuantity;
       challan.totalSquareFeet = totalSquareFeet; // Add totalSquareFeet
       challan.totalBox = totalBox; // Add totalBox
@@ -1105,9 +1103,8 @@ module.exports = {
           // Filter by search if provided
           if (search) {
             const searchLower = search.toLowerCase();
-            const fullName = `${customer?.first_name || ""} ${
-              customer?.last_name || ""
-            }`.toLowerCase();
+            const fullName = `${customer?.first_name || ""} ${customer?.last_name || ""
+              }`.toLowerCase();
             const phone = customer?.phone || "";
 
             if (
