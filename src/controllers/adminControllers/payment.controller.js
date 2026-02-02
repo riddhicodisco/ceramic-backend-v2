@@ -21,7 +21,7 @@ const getPayments = catchAsync(async (req, res) => {
     filter.remark = { $regex: req.query.search, $options: 'i' };
   }
   const options = pick(req.query, ['sortBy', 'limit', 'page']);
-  options.populate = 'customerId';
+  // DO NOT populate customerId here. We want to return the raw ID to avoid null issues.
   const result = await paymentService.queryPayments(filter, options);
   res.send(result);
 });
